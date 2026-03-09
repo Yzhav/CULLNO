@@ -1,0 +1,41 @@
+{
+  "name": "cullno",
+  "version": "0.1.0",
+  "description": "TGA Photo Picker - 大量TGA画像から素早くベストショットをピック",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && electron-builder",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fluentui/react-components": "^9.54.0",
+    "@fluentui/react-icons": "^2.0.245",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.33.2",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vite-plugin-electron": "^0.28.8",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "build": {
+    "appId": "com.cullno.app",
+    "productName": "Cullno",
+    "win": {
+      "target": ["zip"]
+    },
+    "directories": {
+      "output": "release"
+    }
+  }
+}

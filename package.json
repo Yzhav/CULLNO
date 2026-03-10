@@ -1,6 +1,6 @@
 {
   "name": "cullno",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TGA Photo Picker - 大量TGA画像から素早くベストショットをピック",
   "main": "dist-electron/main.js",
   "scripts": {

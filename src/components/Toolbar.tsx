@@ -21,7 +21,8 @@ import { useKeybindStore } from '../stores/useKeybindStore'
 import { getBaseName } from '../utils/fileUtils'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import type { ViewMode, UpdateCheckResult } from '../types'
-import { folderDialogGuard } from './WelcomeView'
+import { folderDialogGuard, withDialogGuard } from '../utils/dialogGuard'
+import { updateSettings } from '../utils/settingsUtils'
 import { KeybindDialog } from './KeybindDialog'
 
 const useStyles = makeStyles({
@@ -128,15 +129,11 @@ export function CullnoToolbar() {
   const currentItem = flatItems[currentIndex]
   const currentFileName = currentItem ? getBaseName(currentItem.image.filePath) : ''
 
-  const handleSelectFolder = async () => {
-    if (folderDialogGuard.locked) return
-    folderDialogGuard.locked = true
-    try {
+  const handleSelectFolder = () => {
+    withDialogGuard(folderDialogGuard, async () => {
       const path = await window.electronAPI.selectFolder()
       if (path) useSessionStore.getState().setFolderPath(path)
-    } finally {
-      folderDialogGuard.locked = false
-    }
+    })
   }
 
   const handleTabSelect = (_: unknown, data: { value: unknown }) => {
@@ -312,8 +309,7 @@ export function CullnoToolbar() {
               setSettingsMenuOpen(false)
               const filePath = await window.electronAPI.selectImageFile()
               if (filePath) {
-                const settings = await window.electronAPI.loadSettings()
-                await window.electronAPI.saveSettings({ ...settings, homeBackground: filePath })
+                await updateSettings({ homeBackground: filePath })
                 window.dispatchEvent(new CustomEvent('cullno:home-bg-change', { detail: filePath }))
               }
             }}>
@@ -321,8 +317,7 @@ export function CullnoToolbar() {
             </MenuItem>
             <MenuItem onClick={async () => {
               setSettingsMenuOpen(false)
-              const settings = await window.electronAPI.loadSettings()
-              await window.electronAPI.saveSettings({ ...settings, homeBackground: undefined })
+              await updateSettings({ homeBackground: undefined })
               window.dispatchEvent(new CustomEvent('cullno:home-bg-change', { detail: null }))
             }}>
               背景画像をクリア
@@ -339,8 +334,7 @@ export function CullnoToolbar() {
               onClick={async () => {
                 const newVal = !autoExpandBurst
                 setAutoExpandBurst(newVal)
-                const settings = await window.electronAPI.loadSettings()
-                await window.electronAPI.saveSettings({ ...settings, autoExpandBurst: newVal })
+                await updateSettings({ autoExpandBurst: newVal })
                 const s = useSessionStore.getState()
                 if (newVal) {
                   if (!s.expandedGroupId) {
@@ -356,8 +350,7 @@ export function CullnoToolbar() {
               onClick={async () => {
                 const newTheme = theme === 'dark' ? 'light' : 'dark'
                 setTheme(newTheme)
-                const settings = await window.electronAPI.loadSettings()
-                await window.electronAPI.saveSettings({ ...settings, theme: newTheme })
+                await updateSettings({ theme: newTheme })
                 window.dispatchEvent(new CustomEvent('cullno:theme-change', { detail: newTheme }))
               }}>
               ライトモード
@@ -372,8 +365,7 @@ export function CullnoToolbar() {
                     <MenuItemRadio key={v} name="scale" value={String(v)}
                       onClick={async () => {
                         setUiScale(v)
-                        const settings = await window.electronAPI.loadSettings()
-                        await window.electronAPI.saveSettings({ ...settings, uiScale: v })
+                        await updateSettings({ uiScale: v })
                         window.dispatchEvent(new CustomEvent('cullno:scale-change', { detail: v }))
                       }}>
                       {v}%

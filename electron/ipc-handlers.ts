@@ -396,6 +396,7 @@ export function registerIpcHandlers() {
     try {
       const res = await fetch('https://api.github.com/repos/Yzhav/CULLNO/releases/latest', {
         headers: { 'Accept': 'application/vnd.github.v3+json' },
+        signal: AbortSignal.timeout(5000),
       })
       if (!res.ok) {
         return { hasUpdate: false, currentVersion, error: `GitHub API: ${res.status}` }

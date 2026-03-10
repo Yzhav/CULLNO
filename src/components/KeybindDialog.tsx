@@ -110,12 +110,11 @@ export function KeybindDialog({ open, onClose }: KeybindDialogProps) {
   const styles = useStyles()
   const { keybinds, saveKeybinds, resetToDefault } = useKeybindStore()
   const [capturingAction, setCapturingAction] = useState<KeyAction | null>(null)
-  const [warningAction, setWarningAction] = useState<KeyAction | null>(null)
-  const [warningLabel, setWarningLabel] = useState<string>('')
+  const [warningInfo, setWarningInfo] = useState<{ action: KeyAction; conflictWith: KeyAction } | null>(null)
 
   const handleKeyButtonClick = useCallback((action: KeyAction) => {
     setCapturingAction(action)
-    setWarningAction(null)
+    setWarningInfo(null)
   }, [])
 
   const handleKeyCapture = useCallback((e: React.KeyboardEvent, action: KeyAction) => {
@@ -138,8 +137,7 @@ export function KeybindDialog({ open, onClose }: KeybindDialogProps) {
       const newConfig: KeybindConfig = { ...keybinds, [action]: '' }
       saveKeybinds(newConfig)
       setCapturingAction(null)
-      setWarningAction(null)
-      setWarningLabel('')
+      setWarningInfo(null)
       return
     }
 
@@ -150,13 +148,10 @@ export function KeybindDialog({ open, onClose }: KeybindDialogProps) {
       ([act, key]) => act !== action && key !== '' && key === newKey
     )
 
-    if (conflictAction) {
-      setWarningAction(action)
-      setWarningLabel(ACTION_LABELS[conflictAction[0]])
-    } else {
-      setWarningAction(null)
-      setWarningLabel('')
-    }
+    setWarningInfo(conflictAction
+      ? { action, conflictWith: conflictAction[0] }
+      : null
+    )
 
     // 割り当て（重複でも保存）
     const newConfig: KeybindConfig = { ...keybinds, [action]: newKey }
@@ -167,7 +162,7 @@ export function KeybindDialog({ open, onClose }: KeybindDialogProps) {
   const handleReset = useCallback(async () => {
     await resetToDefault()
     setCapturingAction(null)
-    setWarningAction(null)
+    setWarningInfo(null)
   }, [resetToDefault])
 
   return (
@@ -187,7 +182,7 @@ export function KeybindDialog({ open, onClose }: KeybindDialogProps) {
                 {ALL_KEY_ACTIONS.map(action => {
                   const isCapturing = capturingAction === action
                   const currentKey = keybinds[action]
-                  const hasWarning = warningAction === action
+                  const warning = warningInfo?.action === action ? warningInfo : null
 
                   return (
                     <tr key={action} className={styles.tr}>
@@ -205,9 +200,9 @@ export function KeybindDialog({ open, onClose }: KeybindDialogProps) {
                         >
                           {isCapturing ? 'キーを入力…' : getKeyDisplay(currentKey)}
                         </div>
-                        {hasWarning && (
+                        {warning && (
                           <span className={styles.warningText}>
-                            「{warningLabel}」にも割り当てられています
+                            「{ACTION_LABELS[warning.conflictWith]}」にも割り当てられています
                           </span>
                         )}
                       </td>

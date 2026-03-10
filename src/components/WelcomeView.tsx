@@ -5,9 +5,9 @@ import { useSessionStore } from '../stores/useSessionStore'
 import { loadMRU } from '../utils/mru'
 import { cullnoColors } from '../styles/tokens'
 import type { MRUEntry } from '../types'
+import { folderDialogGuard, withDialogGuard } from '../utils/dialogGuard'
 
-/** フォルダ選択ダイアログの多重起動防止（アプリ全体で共有） */
-export const folderDialogGuard = { locked: false }
+export { folderDialogGuard }
 
 const useStyles = makeStyles({
   root: {
@@ -201,17 +201,11 @@ export function WelcomeView() {
     })
   }, [homeBackground])
 
-  const handleSelectFolder = useCallback(async () => {
-    if (folderDialogGuard.locked) return
-    folderDialogGuard.locked = true
-    try {
+  const handleSelectFolder = useCallback(() => {
+    withDialogGuard(folderDialogGuard, async () => {
       const path = await window.electronAPI.selectFolder()
-      if (path) {
-        useSessionStore.getState().setFolderPath(path)
-      }
-    } finally {
-      folderDialogGuard.locked = false
-    }
+      if (path) useSessionStore.getState().setFolderPath(path)
+    })
   }, [])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {

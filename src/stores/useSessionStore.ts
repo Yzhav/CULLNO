@@ -2,6 +2,27 @@ import { create } from 'zustand'
 import { temporal } from 'zundo'
 import type { TgaImage, BurstGroup, ViewMode, ScanResult, SessionData, AppSettings } from '../types'
 
+/** 指定パスの画像のpicked状態を一括更新する */
+function updatePickedByPaths(
+  images: TgaImage[],
+  groups: BurstGroup[],
+  paths: Set<string>,
+  picked: boolean,
+): { images: TgaImage[]; groups: BurstGroup[] } {
+  const updater = (img: TgaImage) =>
+    paths.has(img.filePath) ? { ...img, picked } : img
+  return {
+    images: images.map(updater),
+    groups: groups.map(g => ({
+      ...g,
+      images: g.images.map(updater),
+      representative: paths.has(g.representative.filePath)
+        ? { ...g.representative, picked }
+        : g.representative,
+    })),
+  }
+}
+
 export interface FlatItem {
   type: 'single' | 'burst-rep' | 'burst-child'
   image: TgaImage
@@ -488,19 +509,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
       const item = flat[idx]
       if (item) paths.add(item.image.filePath)
     }
-    const newImages = s.images.map(img =>
-      paths.has(img.filePath) ? { ...img, picked: true } : img
-    )
-    const newGroups = s.groups.map(g => ({
-      ...g,
-      images: g.images.map(img =>
-        paths.has(img.filePath) ? { ...img, picked: true } : img
-      ),
-      representative: paths.has(g.representative.filePath)
-        ? { ...g.representative, picked: true }
-        : g.representative,
-    }))
-    set({ images: newImages, groups: newGroups })
+    set(updatePickedByPaths(s.images, s.groups, paths, true))
     get().debouncedSave()
   },
 
@@ -513,19 +522,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
       const item = flat[idx]
       if (item) paths.add(item.image.filePath)
     }
-    const newImages = s.images.map(img =>
-      paths.has(img.filePath) ? { ...img, picked: false } : img
-    )
-    const newGroups = s.groups.map(g => ({
-      ...g,
-      images: g.images.map(img =>
-        paths.has(img.filePath) ? { ...img, picked: false } : img
-      ),
-      representative: paths.has(g.representative.filePath)
-        ? { ...g.representative, picked: false }
-        : g.representative,
-    }))
-    set({ images: newImages, groups: newGroups })
+    set(updatePickedByPaths(s.images, s.groups, paths, false))
     get().debouncedSave()
   },
 

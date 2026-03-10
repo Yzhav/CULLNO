@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useSessionStore, buildFlatItems } from '../stores/useSessionStore'
 import { useSelectionStore } from '../stores/useSelectionStore'
 import { useKeybindStore } from '../stores/useKeybindStore'
-import { folderDialogGuard } from '../components/WelcomeView'
+import { folderDialogGuard, withDialogGuard } from '../utils/dialogGuard'
 
 export function useKeyBindings() {
   useEffect(() => {
@@ -21,11 +21,11 @@ export function useKeyBindings() {
       // Ctrl+O: フォルダ選択
       if (e.ctrlKey && e.key === 'o') {
         e.preventDefault()
-        if (e.repeat || folderDialogGuard.locked) return
-        folderDialogGuard.locked = true
-        window.electronAPI.selectFolder().then(path => {
+        if (e.repeat) return
+        withDialogGuard(folderDialogGuard, async () => {
+          const path = await window.electronAPI.selectFolder()
           if (path) s.setFolderPath(path)
-        }).finally(() => { folderDialogGuard.locked = false })
+        })
         return
       }
 

@@ -22,20 +22,17 @@
 - Zustand 5（状態管理）
 - Sharp（サムネイル生成）
 
-## セットアップ
+## インストール
+
+[Releases](https://github.com/Yzhav/CULLNO/releases) から zip をダウンロードし、展開して `Cullno.exe` を実行してください。
+
+## 開発
 
 ```bash
 npm install
-npm run dev
+npm run dev     # 開発サーバー起動
+npm run build   # プロダクションビルド（release/ に zip 出力）
 ```
-
-## ビルド
-
-```bash
-npm run build
-```
-
-`release/` に zip が出力されます。
 
 ## ライセンス
 

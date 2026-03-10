@@ -79,6 +79,10 @@ const api = {
   saveKeybinds: (config: KeybindConfig): Promise<void> =>
     ipcRenderer.invoke('save-keybinds', config),
 
+  // ファイルをエクスプローラーで選択状態で開く
+  showItemInFolder: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('show-item-in-folder', filePath),
+
   // バージョン
   getAppVersion: (): Promise<string> =>
     ipcRenderer.invoke('get-app-version'),

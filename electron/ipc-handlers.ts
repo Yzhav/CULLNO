@@ -367,6 +367,11 @@ export function registerIpcHandlers() {
     shell.openPath(folderPath)
   })
 
+  // ファイルをエクスプローラーで選択状態で開く
+  ipcMain.handle('show-item-in-folder', async (_event, filePath: string) => {
+    shell.showItemInFolder(filePath)
+  })
+
   // キーバインド読み込み
   ipcMain.handle('get-keybinds', async (): Promise<KeybindConfig> => {
     try {

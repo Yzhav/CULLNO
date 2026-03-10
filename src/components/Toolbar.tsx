@@ -21,6 +21,7 @@ import { useKeybindStore } from '../stores/useKeybindStore'
 import { getBaseName } from '../utils/fileUtils'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import type { ViewMode, UpdateCheckResult } from '../types'
+import { folderDialogGuard } from './WelcomeView'
 import { KeybindDialog } from './KeybindDialog'
 
 const useStyles = makeStyles({
@@ -54,6 +55,22 @@ const useStyles = makeStyles({
     paddingLeft: '8px',
     paddingRight: '8px',
   },
+  fileNameClickable: {
+    flex: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+    textAlign: 'center',
+    paddingLeft: '8px',
+    paddingRight: '8px',
+    cursor: 'pointer',
+    ':hover': {
+      color: tokens.colorNeutralForeground1,
+      textDecorationLine: 'underline',
+    },
+  },
   actions: {
     display: 'flex',
     alignItems: 'center',
@@ -76,6 +93,7 @@ export function CullnoToolbar() {
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
   const [updateChecking, setUpdateChecking] = useState(false)
+  const [cacheClearConfirm, setCacheClearConfirm] = useState(false)
   const [autoExpandBurst, setAutoExpandBurst] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [uiScale, setUiScale] = useState(100)
@@ -111,8 +129,14 @@ export function CullnoToolbar() {
   const currentFileName = currentItem ? getBaseName(currentItem.image.filePath) : ''
 
   const handleSelectFolder = async () => {
-    const path = await window.electronAPI.selectFolder()
-    if (path) useSessionStore.getState().setFolderPath(path)
+    if (folderDialogGuard.locked) return
+    folderDialogGuard.locked = true
+    try {
+      const path = await window.electronAPI.selectFolder()
+      if (path) useSessionStore.getState().setFolderPath(path)
+    } finally {
+      folderDialogGuard.locked = false
+    }
   }
 
   const handleTabSelect = (_: unknown, data: { value: unknown }) => {
@@ -162,10 +186,21 @@ export function CullnoToolbar() {
             </Tab>
           </TabList>
 
-          {/* ファイル名 */}
-          <Text className={styles.fileName} title={currentFileName}>
-            {currentFileName}
-          </Text>
+          {/* ファイル名（クリックでエクスプローラーを開く） */}
+          <Tooltip content="エクスプローラーで開く" relationship="description">
+            <Text
+              className={styles.fileNameClickable}
+              title={currentFileName}
+              onClick={() => {
+                const filePath = currentItem?.image.filePath
+                if (filePath) {
+                  window.electronAPI.showItemInFolder(filePath)
+                }
+              }}
+            >
+              {currentFileName}
+            </Text>
+          </Tooltip>
 
           {/* ピック・ゴミ箱ボタン */}
           <div className={styles.actions}>
@@ -348,6 +383,12 @@ export function CullnoToolbar() {
               </MenuPopover>
             </Menu>
             <MenuDivider />
+            <MenuItem onClick={() => {
+              setSettingsMenuOpen(false)
+              setCacheClearConfirm(true)
+            }}>
+              キャッシュクリア
+            </MenuItem>
             <MenuItem onClick={async () => {
               setSettingsMenuOpen(false)
               setUpdateChecking(true)
@@ -356,6 +397,12 @@ export function CullnoToolbar() {
               setUpdateResult(result)
             }}>
               アップデート確認
+            </MenuItem>
+            <MenuItem onClick={() => {
+              setSettingsMenuOpen(false)
+              window.electronAPI.openExternal('https://github.com/Yzhav/CULLNO')
+            }}>
+              GitHub
             </MenuItem>
           </MenuList>
         </MenuPopover>
@@ -396,6 +443,25 @@ export function CullnoToolbar() {
               <Button appearance="secondary" onClick={() => setUpdateResult(null)} disabled={updateChecking}>
                 閉じる
               </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      {/* キャッシュクリア確認ダイアログ */}
+      <Dialog open={cacheClearConfirm} onOpenChange={(_, d) => setCacheClearConfirm(d.open)}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>キャッシュクリア</DialogTitle>
+            <DialogContent>
+              <Text>サムネイルキャッシュを削除しますか？次回のサムネイル読み込みが遅くなります。</Text>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => setCacheClearConfirm(false)}>キャンセル</Button>
+              <Button appearance="primary" onClick={async () => {
+                await window.electronAPI.clearCache()
+                setCacheClearConfirm(false)
+              }}>削除</Button>
             </DialogActions>
           </DialogBody>
         </DialogSurface>

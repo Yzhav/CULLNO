@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions,
   Button, ProgressBar, Text, Input, Label, Switch, Slider, Dropdown, Option, makeStyles, tokens,
@@ -67,8 +67,11 @@ export function ExportDialog() {
     }
   }, [open, folderPath])
 
+  const openRef = useRef(false)
+  useEffect(() => { openRef.current = open }, [open])
+
   useEffect(() => {
-    const handler = () => setOpen(true)
+    const handler = () => { if (!openRef.current) setOpen(true) }
     window.addEventListener('cullno:export', handler)
     return () => window.removeEventListener('cullno:export', handler)
   }, [])

@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { makeStyles, tokens, Button, Spinner, Text } from '@fluentui/react-components'
-import { FolderOpen24Regular, Delete24Regular, Folder24Regular } from '@fluentui/react-icons'
+import { makeStyles, tokens, Spinner, Text } from '@fluentui/react-components'
+import { FolderOpen24Regular, Folder24Regular } from '@fluentui/react-icons'
 import { useSessionStore } from '../stores/useSessionStore'
 import { loadMRU } from '../utils/mru'
 import { cullnoColors } from '../styles/tokens'
 import type { MRUEntry } from '../types'
+
+/** フォルダ選択ダイアログの多重起動防止（アプリ全体で共有） */
+export const folderDialogGuard = { locked: false }
 
 const useStyles = makeStyles({
   root: {
@@ -199,9 +202,15 @@ export function WelcomeView() {
   }, [homeBackground])
 
   const handleSelectFolder = useCallback(async () => {
-    const path = await window.electronAPI.selectFolder()
-    if (path) {
-      useSessionStore.getState().setFolderPath(path)
+    if (folderDialogGuard.locked) return
+    folderDialogGuard.locked = true
+    try {
+      const path = await window.electronAPI.selectFolder()
+      if (path) {
+        useSessionStore.getState().setFolderPath(path)
+      }
+    } finally {
+      folderDialogGuard.locked = false
     }
   }, [])
 
@@ -308,18 +317,6 @@ export function WelcomeView() {
       {/* フッター */}
       <div className={styles.footer}>
         {appVersion && <Text className={styles.version}>Cullno v{appVersion}</Text>}
-        <Button
-          appearance="subtle"
-          icon={<Delete24Regular />}
-          size="small"
-          onClick={async (e) => {
-            e.stopPropagation()
-            await window.electronAPI.clearCache()
-            console.log('[Dev] cache cleared')
-          }}
-        >
-          キャッシュクリア
-        </Button>
       </div>
     </div>
   )

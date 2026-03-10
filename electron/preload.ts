@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { ThumbnailSize, SessionData, AppSettings, ScanResult, ExportProgress, KeybindConfig } from '../src/types'
+import type { ThumbnailSize, SessionData, AppSettings, ScanResult, ExportProgress, KeybindConfig, UpdateCheckResult } from '../src/types'
 
 const api = {
   // フォルダ操作
@@ -82,6 +82,10 @@ const api = {
   // バージョン
   getAppVersion: (): Promise<string> =>
     ipcRenderer.invoke('get-app-version'),
+  checkForUpdates: (): Promise<UpdateCheckResult> =>
+    ipcRenderer.invoke('check-for-updates'),
+  openExternal: (url: string): Promise<void> =>
+    ipcRenderer.invoke('open-external', url),
 
   // ウィンドウ
   minimizeWindow: () => ipcRenderer.send('minimize-window'),

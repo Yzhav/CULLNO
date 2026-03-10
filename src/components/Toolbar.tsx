@@ -3,7 +3,9 @@ import {
   makeStyles, tokens,
   ToolbarButton, ToolbarDivider, Tooltip,
   TabList, Tab, Text,
-  Menu, MenuTrigger, MenuPopover, MenuList, MenuItem, MenuItemCheckbox, MenuItemRadio,
+  Menu, MenuTrigger, MenuPopover, MenuList, MenuItem, MenuItemCheckbox, MenuItemRadio, MenuDivider,
+  Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions,
+  Button,
 } from '@fluentui/react-components'
 import {
   Home24Regular, FolderOpen24Regular,
@@ -18,7 +20,7 @@ import { useSelectionStore } from '../stores/useSelectionStore'
 import { useKeybindStore } from '../stores/useKeybindStore'
 import { getBaseName } from '../utils/fileUtils'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
-import type { ViewMode } from '../types'
+import type { ViewMode, UpdateCheckResult } from '../types'
 import { KeybindDialog } from './KeybindDialog'
 
 const useStyles = makeStyles({
@@ -72,6 +74,8 @@ export function CullnoToolbar() {
   const styles = useStyles()
   const [keybindDialogOpen, setKeybindDialogOpen] = useState(false)
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
+  const [updateChecking, setUpdateChecking] = useState(false)
   const [autoExpandBurst, setAutoExpandBurst] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [uiScale, setUiScale] = useState(100)
@@ -343,11 +347,59 @@ export function CullnoToolbar() {
                 </MenuList>
               </MenuPopover>
             </Menu>
+            <MenuDivider />
+            <MenuItem onClick={async () => {
+              setSettingsMenuOpen(false)
+              setUpdateChecking(true)
+              const result = await window.electronAPI.checkForUpdates()
+              setUpdateChecking(false)
+              setUpdateResult(result)
+            }}>
+              アップデート確認
+            </MenuItem>
           </MenuList>
         </MenuPopover>
       </Menu>
 
       <KeybindDialog open={keybindDialogOpen} onClose={() => setKeybindDialogOpen(false)} />
+
+      {/* アップデート確認ダイアログ */}
+      <Dialog open={updateChecking || updateResult !== null} onOpenChange={() => { if (!updateChecking) setUpdateResult(null) }}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>アップデート確認</DialogTitle>
+            <DialogContent>
+              {updateChecking ? (
+                <Text>確認中...</Text>
+              ) : updateResult?.error ? (
+                <Text>確認に失敗しました: {updateResult.error}</Text>
+              ) : updateResult?.hasUpdate ? (
+                <>
+                  <Text block>新しいバージョンがあります！</Text>
+                  <Text block style={{ marginTop: 8 }}>
+                    現在: v{updateResult.currentVersion} → 最新: v{updateResult.latestVersion}
+                  </Text>
+                </>
+              ) : (
+                <Text>最新バージョン（v{updateResult?.currentVersion}）を使用中です。</Text>
+              )}
+            </DialogContent>
+            <DialogActions>
+              {updateResult?.hasUpdate && updateResult.releaseUrl && (
+                <Button appearance="primary" onClick={() => {
+                  window.electronAPI.openExternal(updateResult.releaseUrl!)
+                  setUpdateResult(null)
+                }}>
+                  ダウンロードページを開く
+                </Button>
+              )}
+              <Button appearance="secondary" onClick={() => setUpdateResult(null)} disabled={updateChecking}>
+                閉じる
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   )
 }

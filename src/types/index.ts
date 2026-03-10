@@ -108,6 +108,15 @@ export interface ExportProgress {
   currentFile: string
 }
 
+/** アップデート確認結果 */
+export interface UpdateCheckResult {
+  hasUpdate: boolean
+  currentVersion: string
+  latestVersion?: string
+  releaseUrl?: string
+  error?: string
+}
+
 /** 最近使ったフォルダのエントリ */
 export interface MRUEntry {
   folderPath: string

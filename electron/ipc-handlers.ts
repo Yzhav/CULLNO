@@ -4,7 +4,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { scanFolder, listDateFolders, SUPPORTED_EXTENSIONS } from './file-scanner'
-import type { ThumbnailSize, SessionData, AppSettings, KeybindConfig } from '../src/types'
+import type { ThumbnailSize, SessionData, AppSettings, KeybindConfig, UpdateCheckResult } from '../src/types'
 import { DEFAULT_KEYBINDS } from '../src/types'
 
 const SIZE_MAP: Record<ThumbnailSize, number> = {
@@ -384,6 +384,30 @@ export function registerIpcHandlers() {
 
   // バージョン
   ipcMain.handle('get-app-version', () => app.getVersion())
+
+  // アップデート確認
+  ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResult> => {
+    const currentVersion = app.getVersion()
+    try {
+      const res = await fetch('https://api.github.com/repos/Yzhav/CULLNO/releases/latest', {
+        headers: { 'Accept': 'application/vnd.github.v3+json' },
+      })
+      if (!res.ok) {
+        return { hasUpdate: false, currentVersion, error: `GitHub API: ${res.status}` }
+      }
+      const data = await res.json() as { tag_name: string; html_url: string }
+      const latestVersion = data.tag_name.replace(/^v/, '')
+      const hasUpdate = latestVersion !== currentVersion
+      return { hasUpdate, currentVersion, latestVersion, releaseUrl: data.html_url }
+    } catch (err) {
+      return { hasUpdate: false, currentVersion, error: String(err) }
+    }
+  })
+
+  // 外部URLを開く
+  ipcMain.handle('open-external', async (_event, url: string) => {
+    shell.openExternal(url)
+  })
 
   // ウィンドウ操作
   ipcMain.on('minimize-window', (event) => {

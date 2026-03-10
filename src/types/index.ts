@@ -73,6 +73,13 @@ export interface SessionData {
 export interface AppSettings {
   defaultFolder: string
   exportFolder: string
+  gridThumbSize?: number
+  showFilmStrip?: boolean
+  autoExpandBurst?: boolean
+  mruMaxCount?: number
+  theme?: 'dark' | 'light'
+  uiScale?: number  // 80-150, デフォルト100
+  homeBackground?: string  // Home背景画像のファイルパス
 }
 
 /** 表示モード */
@@ -83,6 +90,15 @@ export interface ScanResult {
   images: TgaImage[]
   groups: BurstGroup[]
   totalSize: number
+}
+
+/** エクスポート形式 */
+export type ExportFormat = 'png' | 'jpeg'
+
+/** エクスポートオプション */
+export interface ExportOptions {
+  format: ExportFormat
+  quality: number  // JPEG品質 1-100（PNGでは無視）
 }
 
 /** エクスポート進捗 */
@@ -98,4 +114,36 @@ export interface MRUEntry {
   folderName: string
   tgaCount: number
   lastOpened: string  // ISO 8601
+}
+
+/** キーバインドアクション */
+export type KeyAction =
+  | 'navigatePrev'     // 前へ
+  | 'navigateNext'     // 次へ
+  | 'navigateUp'       // 上へ（グリッドのみ）
+  | 'navigateDown'     // 下へ（グリッドのみ）
+  | 'pick'             // ピックトグル
+  | 'modeTransition'   // モード遷移（Tab）
+  | 'burstToggle'      // バースト展開/折畳
+  | 'trash'            // ゴミ箱トグル
+  | 'fullscreen'       // フルスクリーン
+  | 'pickedFilter'     // ピック済みフィルタ
+  | 'compare'          // 比較モード直接移行
+
+/** キーバインド設定 */
+export type KeybindConfig = Record<KeyAction, string>
+
+/** キーバインドのデフォルト値 */
+export const DEFAULT_KEYBINDS: KeybindConfig = {
+  navigatePrev: 'ArrowLeft',
+  navigateNext: 'ArrowRight',
+  navigateUp: 'ArrowUp',
+  navigateDown: 'ArrowDown',
+  pick: ' ',
+  modeTransition: 'Tab',
+  burstToggle: 'e',
+  trash: 'Delete',
+  fullscreen: 'f',
+  pickedFilter: 'q',
+  compare: '',
 }

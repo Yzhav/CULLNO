@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState } from 'react'
 import {
   Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions,
   Button, Text, makeStyles, tokens,
@@ -11,70 +11,52 @@ const useStyles = makeStyles({
     display: 'flex',
     flexDirection: 'column',
     gap: '8px',
-    marginBottom: '16px',
   },
-  success: {
-    color: tokens.colorPaletteGreenForeground1,
-  },
-  error: {
+  warning: {
     color: tokens.colorPaletteRedForeground1,
+    fontSize: tokens.fontSizeBase200,
   },
 })
 
-export function TrashDialog() {
+export function DeleteConfirmDialog() {
   const styles = useStyles()
-  const [open, setOpen] = useState(false)
-  const [moving, setMoving] = useState(false)
-  const [result, setResult] = useState<{ moved: number; failed: number } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const pendingDeletePaths = useSessionStore(s => s.pendingDeletePaths)
+  const open = pendingDeletePaths !== null && pendingDeletePaths.length > 0
 
-  const images = useSessionStore(s => s.images)
-  const trashedImages = useMemo(() => images.filter(i => i.trashed), [images])
+  const handleConfirm = async () => {
+    setDeleting(true)
+    await useSessionStore.getState().confirmDelete()
+    setDeleting(false)
+  }
 
-  useEffect(() => {
-    const handler = () => setOpen(true)
-    window.addEventListener('cullno:trash', handler)
-    return () => window.removeEventListener('cullno:trash', handler)
-  }, [])
-
-  const handleMoveToTrash = async () => {
-    setMoving(true)
-    const results = await window.electronAPI.moveToTrash(trashedImages.map(i => i.filePath))
-    const moved = results.filter(r => r.success).length
-    const failed = results.filter(r => !r.success).length
-    setResult({ moved, failed })
-    setMoving(false)
+  const handleCancel = () => {
+    useSessionStore.getState().cancelDelete()
   }
 
   return (
-    <Dialog open={open} onOpenChange={(_, d) => { setOpen(d.open); setResult(null) }}>
+    <Dialog open={open} onOpenChange={(_, d) => { if (!d.open) handleCancel() }}>
       <DialogSurface>
         <DialogBody>
-          <DialogTitle>ゴミ箱管理</DialogTitle>
+          <DialogTitle>ファイル削除</DialogTitle>
           <DialogContent>
             <div className={styles.info}>
-              <Text>ゴミ箱マーク済み: {trashedImages.length} 枚</Text>
-              <Text size={200}>
-                trash/ フォルダへ移動します（元フォルダ内）
+              <Text>{pendingDeletePaths?.length ?? 0} 枚のファイルを削除しますか？</Text>
+              <Text className={styles.warning}>
+                元フォルダ内の trash/ に移動されます
               </Text>
             </div>
-            {result && (
-              <Text className={result.failed > 0 ? styles.error : styles.success}>
-                {result.moved} 枚を移動{result.failed > 0 ? ` (${result.failed} 枚失敗)` : ''}
-              </Text>
-            )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpen(false)}>閉じる</Button>
-            {!result && (
-              <Button
-                appearance="primary"
-                icon={<Delete24Regular />}
-                onClick={handleMoveToTrash}
-                disabled={moving || trashedImages.length === 0}
-              >
-                {moving ? '移動中...' : 'ゴミ箱へ移動'}
-              </Button>
-            )}
+            <Button onClick={handleCancel} disabled={deleting}>キャンセル</Button>
+            <Button
+              appearance="primary"
+              icon={<Delete24Regular />}
+              onClick={handleConfirm}
+              disabled={deleting}
+            >
+              {deleting ? '削除中...' : '削除'}
+            </Button>
           </DialogActions>
         </DialogBody>
       </DialogSurface>

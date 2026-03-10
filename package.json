@@ -15,6 +15,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.33.2",
+    "zundo": "^2.3.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -31,8 +32,32 @@
   "build": {
     "appId": "com.cullno.app",
     "productName": "Cullno",
+    "icon": "build/icon.png",
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/sharp/**",
+      "**/node_modules/@img/**"
+    ],
+    "files": [
+      {
+        "from": "dist",
+        "to": "dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "dist-electron",
+        "to": "dist-electron",
+        "filter": ["**/*"]
+      },
+      "node_modules/**",
+      "!node_modules/.cache/**",
+      "!node_modules/.vite/**",
+      "package.json"
+    ],
     "win": {
-      "target": ["zip"]
+      "target": [
+        "zip"
+      ]
     },
     "directories": {
       "output": "release"

@@ -1,5 +1,6 @@
 import { makeStyles, tokens, Spinner } from '@fluentui/react-components'
 import { useProgressiveThumbnail } from '../hooks/useThumbnail'
+import { getBaseName } from '../utils/fileUtils'
 
 const useStyles = makeStyles({
   root: {
@@ -32,13 +33,6 @@ const useStyles = makeStyles({
     gap: '12px',
     color: tokens.colorNeutralForeground4,
   },
-  trashedOverlay: {
-    position: 'absolute',
-    inset: 0,
-    backgroundColor: 'rgba(220, 38, 38, 0.15)',
-    pointerEvents: 'none',
-    zIndex: 5,
-  },
   loadingIndicator: {
     position: 'absolute',
     bottom: '8px',
@@ -51,20 +45,21 @@ const useStyles = makeStyles({
 
 interface PreviewPaneProps {
   filePath: string | null
-  trashed?: boolean
   onClickImage?: () => void
+  'aria-label'?: string
 }
 
-export function PreviewPane({ filePath, trashed, onClickImage }: PreviewPaneProps) {
+export function PreviewPane({ filePath, onClickImage, 'aria-label': ariaLabel }: PreviewPaneProps) {
   const styles = useStyles()
   const { dataUrl, loading } = useProgressiveThumbnail(filePath)
+  const fileName = filePath ? getBaseName(filePath) : ''
 
   return (
-    <div className={styles.root} onClick={onClickImage}>
+    <div className={styles.root} onClick={onClickImage} role="img" aria-label={ariaLabel ?? fileName}>
       <div className={styles.imageContainer}>
         {filePath && !dataUrl && (
           <div className={styles.placeholder}>
-            <Spinner size="medium" />
+            <Spinner size="medium" aria-label="読み込み中" />
           </div>
         )}
         {!filePath && (
@@ -77,10 +72,10 @@ export function PreviewPane({ filePath, trashed, onClickImage }: PreviewPaneProp
             src={dataUrl}
             className={styles.image}
             draggable={false}
+            alt={fileName}
           />
         )}
       </div>
-      {trashed && <div className={styles.trashedOverlay} />}
       {loading && (
         <div className={styles.loadingIndicator}>
           <Spinner size="tiny" />

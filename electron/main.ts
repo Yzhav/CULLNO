@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 import { registerIpcHandlers, cleanupWorkers } from './ipc-handlers'
@@ -12,6 +12,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#1e1e1e',
+    icon: join(__dirname, '../build/icon.png'),
     // 標準ウィンドウフレーム（確実にドラッグ・最小化・最大化が動作する）
     frame: true,
     autoHideMenuBar: true,
@@ -35,7 +36,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
-    mainWindow.loadFile(join(__dirname, '../index.html'))
+    mainWindow.loadFile(join(__dirname, '../dist/index.html'))
   }
 
   mainWindow.on('closed', () => {
@@ -57,6 +58,9 @@ if (app.isPackaged) {
     })
   }
 }
+
+// Electronデフォルトメニューを完全削除
+Menu.setApplicationMenu(null)
 
 app.whenReady().then(() => {
   // 起動時キャッシュ診断

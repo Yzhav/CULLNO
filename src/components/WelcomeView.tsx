@@ -3,6 +3,7 @@ import { makeStyles, tokens, Button, Spinner, Text } from '@fluentui/react-compo
 import { FolderOpen24Regular, Delete24Regular, Folder24Regular } from '@fluentui/react-icons'
 import { useSessionStore } from '../stores/useSessionStore'
 import { loadMRU } from '../utils/mru'
+import { cullnoColors } from '../styles/tokens'
 import type { MRUEntry } from '../types'
 
 const useStyles = makeStyles({
@@ -12,7 +13,21 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     userSelect: 'none',
     position: 'relative',
-    background: 'radial-gradient(ellipse at 30% 70%, rgba(59, 130, 246, 0.06) 0%, transparent 60%), linear-gradient(145deg, #1a1a2e 0%, #1e1e1e 40%, #1e1e1e 60%, #1a1a2e 100%)',
+    overflow: 'hidden',
+    background: `radial-gradient(ellipse at 30% 70%, ${cullnoColors.welcomeAccent} 0%, transparent 60%), linear-gradient(145deg, ${cullnoColors.welcomeBgDark} 0%, ${tokens.colorNeutralBackground1} 40%, ${tokens.colorNeutralBackground1} 60%, ${cullnoColors.welcomeBgDark} 100%)`,
+  },
+  backgroundImage: {
+    position: 'absolute',
+    inset: 0,
+    objectFit: 'cover' as const,
+    width: '100%',
+    height: '100%',
+    zIndex: 0,
+  },
+  backgroundOverlay: {
+    position: 'absolute',
+    inset: 0,
+    zIndex: 1,
   },
   dropZone: {
     flex: 1,
@@ -26,6 +41,8 @@ const useStyles = makeStyles({
     border: `2px dashed ${tokens.colorNeutralStroke2}`,
     cursor: 'pointer',
     transition: 'border-color 0.2s, background-color 0.2s',
+    position: 'relative',
+    zIndex: 2,
   },
   dropZoneActive: {
     flex: 1,
@@ -37,9 +54,11 @@ const useStyles = makeStyles({
     margin: '24px',
     borderRadius: tokens.borderRadiusXLarge,
     border: `2px dashed ${tokens.colorBrandForeground1}`,
-    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    backgroundColor: cullnoColors.dropzoneActiveBg,
     cursor: 'pointer',
     transition: 'border-color 0.2s, background-color 0.2s',
+    position: 'relative',
+    zIndex: 2,
   },
   dropContent: {
     display: 'flex',
@@ -88,7 +107,7 @@ const useStyles = makeStyles({
     cursor: 'pointer',
     transition: 'background-color 0.15s',
     ':hover': {
-      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+      backgroundColor: cullnoColors.surfaceHover,
     },
   },
   mruItemFirst: {
@@ -102,9 +121,9 @@ const useStyles = makeStyles({
     borderRadius: tokens.borderRadiusMedium,
     cursor: 'pointer',
     transition: 'background-color 0.15s',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    backgroundColor: cullnoColors.surfaceSubtle,
     ':hover': {
-      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      backgroundColor: cullnoColors.surfaceSubtleHover,
     },
   },
   mruIcon: {
@@ -129,9 +148,19 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground4,
   },
   footer: {
-    position: 'absolute',
-    bottom: '12px',
-    right: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: '16px',
+    paddingRight: '12px',
+    paddingBottom: '8px',
+    flexShrink: 0,
+    position: 'relative',
+    zIndex: 2,
+  },
+  version: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground4,
   },
 })
 
@@ -139,11 +168,35 @@ export function WelcomeView() {
   const styles = useStyles()
   const [isDragOver, setIsDragOver] = useState(false)
   const [mruEntries, setMruEntries] = useState<MRUEntry[]>([])
+  const [appVersion, setAppVersion] = useState('')
+  const [homeBackground, setHomeBackground] = useState<string | null>(null)
+  const [bgDataUrl, setBgDataUrl] = useState<string | null>(null)
   const scanning = useSessionStore(s => s.scanning)
 
   useEffect(() => {
     setMruEntries(loadMRU())
+    window.electronAPI.getAppVersion().then(v => setAppVersion(v))
+    window.electronAPI.loadSettings().then(settings => {
+      if (settings.homeBackground) setHomeBackground(settings.homeBackground)
+    })
   }, [])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setHomeBackground((e as CustomEvent).detail as string | null)
+    }
+    window.addEventListener('cullno:home-bg-change', handler)
+    return () => window.removeEventListener('cullno:home-bg-change', handler)
+  }, [])
+
+  useEffect(() => {
+    if (!homeBackground) { setBgDataUrl(null); return }
+    // rootFolder に親ディレクトリを渡してキャッシュパスを一意にする
+    const parentDir = homeBackground.replace(/[/\\][^/\\]+$/, '')
+    window.electronAPI.getThumbnail(homeBackground, 'full', parentDir).then(url => {
+      if (url) setBgDataUrl(url)
+    })
+  }, [homeBackground])
 
   const handleSelectFolder = useCallback(async () => {
     const path = await window.electronAPI.selectFolder()
@@ -162,9 +215,19 @@ export function WelcomeView() {
     setIsDragOver(false)
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
+    const file = e.dataTransfer?.files[0]
+    if (!file) return
+    try {
+      const folderPath = await window.electronAPI.getFilePathAndResolve(file)
+      if (folderPath) {
+        useSessionStore.getState().setFolderPath(folderPath)
+      }
+    } catch (err) {
+      console.error('[D&D WelcomeView] error:', err)
+    }
   }, [])
 
   const handleMruClick = useCallback((e: React.MouseEvent, folderPath: string) => {
@@ -184,6 +247,22 @@ export function WelcomeView() {
 
   return (
     <div className={styles.root}>
+      {/* 背景画像 */}
+      {bgDataUrl && (
+        <>
+          <img
+            className={styles.backgroundImage}
+            src={bgDataUrl}
+            alt=""
+            draggable={false}
+          />
+          <div
+            className={styles.backgroundOverlay}
+            style={{ backgroundColor: 'var(--cullno-home-bg-overlay)' }}
+          />
+        </>
+      )}
+
       {/* ドロップゾーン = 画面全体 */}
       <div
         className={isDragOver ? styles.dropZoneActive : styles.dropZone}
@@ -191,6 +270,9 @@ export function WelcomeView() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={handleSelectFolder}
+        role="button"
+        aria-label="フォルダを開く - ドラッグ＆ドロップまたはクリック"
+        tabIndex={0}
       >
         {/* アイコン + テキスト */}
         <div className={styles.dropContent}>
@@ -203,12 +285,13 @@ export function WelcomeView() {
         {mruEntries.length > 0 && (
           <div className={styles.mruSection}>
             <div className={styles.mruHeader}>最近開いたフォルダ</div>
-            <div className={styles.mruList}>
+            <div className={styles.mruList} role="list" aria-label="最近開いたフォルダ">
               {mruEntries.map((entry, i) => (
                 <div
                   key={entry.folderPath}
                   className={i === 0 ? styles.mruItemFirst : styles.mruItem}
                   onClick={(e) => handleMruClick(e, entry.folderPath)}
+                  role="listitem"
                 >
                   <Folder24Regular className={styles.mruIcon} />
                   <div className={styles.mruInfo}>
@@ -222,8 +305,9 @@ export function WelcomeView() {
         )}
       </div>
 
-      {/* キャッシュクリア（Dev） */}
+      {/* フッター */}
       <div className={styles.footer}>
+        {appVersion && <Text className={styles.version}>Cullno v{appVersion}</Text>}
         <Button
           appearance="subtle"
           icon={<Delete24Regular />}

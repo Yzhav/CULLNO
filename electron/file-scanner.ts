@@ -2,6 +2,9 @@ import * as fs from 'fs'
 import * as path from 'path'
 import type { TgaImage, BurstGroup, ScanResult } from '../src/types'
 
+/** 対応画像拡張子 */
+export const SUPPORTED_EXTENSIONS = new Set(['.tga', '.png', '.jpg', '.jpeg'])
+
 /**
  * ファイル名パターン: YYYY-MM-DD_HH-MM-SS.nnnnnnn_N.tga
  * _N がバースト連番。_0 が新しいシャッター押下の開始。
@@ -19,21 +22,23 @@ function parseTgaFilename(filename: string): { timestamp: Date; burstIndex: numb
   return { timestamp, burstIndex: Number(burst) }
 }
 
-/** フォルダを再帰的にスキャンしてTGAファイルを収集 */
-async function collectTgaFiles(dirPath: string, images: TgaImage[], totalSizeRef: { value: number }) {
+/** フォルダを再帰的にスキャンして対応画像ファイルを収集 */
+async function collectImageFiles(dirPath: string, images: TgaImage[], totalSizeRef: { value: number }) {
   const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
 
   for (const entry of entries) {
     const fullPath = path.join(dirPath, entry.name)
 
     if (entry.isDirectory()) {
-      if (entry.name.toLowerCase() === 'trash') continue
-      await collectTgaFiles(fullPath, images, totalSizeRef)
+      const dirLower = entry.name.toLowerCase()
+      if (dirLower === 'trash') continue
+      await collectImageFiles(fullPath, images, totalSizeRef)
       continue
     }
 
     if (!entry.isFile()) continue
-    if (!entry.name.toLowerCase().endsWith('.tga')) continue
+    const ext = path.extname(entry.name).toLowerCase()
+    if (!SUPPORTED_EXTENSIONS.has(ext)) continue
 
     const stat = await fs.promises.stat(fullPath)
     const parsed = parseTgaFilename(entry.name)
@@ -61,7 +66,7 @@ export async function scanFolder(folderPath: string): Promise<ScanResult> {
 
   const images: TgaImage[] = []
   const totalSizeRef = { value: 0 }
-  await collectTgaFiles(folderPath, images, totalSizeRef)
+  await collectImageFiles(folderPath, images, totalSizeRef)
   const totalSize = totalSizeRef.value
 
   // タイムスタンプ + バーストインデックスでソート

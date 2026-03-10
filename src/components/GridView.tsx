@@ -1,7 +1,9 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { makeStyles, tokens, mergeClasses } from '@fluentui/react-components'
 import { useThumbnail } from '../hooks/useThumbnail'
 import { useSessionStore, buildFlatItems, type FlatItem } from '../stores/useSessionStore'
+import { useSelectionStore } from '../stores/useSelectionStore'
+import { getBaseName } from '../utils/fileUtils'
 import { cullnoColors } from '../styles/tokens'
 
 const useStyles = makeStyles({
@@ -13,114 +15,151 @@ const useStyles = makeStyles({
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-    gap: '6px',
+    gap: '2px',
   },
 })
 
 const useCellStyles = makeStyles({
   cell: {
     position: 'relative',
-    aspectRatio: '16/9',
-    overflow: 'hidden',
+    aspectRatio: '5/4',
+    overflow: 'visible',
     cursor: 'pointer',
-    padding: '0px',
-    backgroundColor: 'transparent',
+    padding: '6px',
+    backgroundColor: tokens.colorNeutralBackground3,
     transitionProperty: 'background-color',
     transitionDuration: '0.1s',
-    ':hover': {
-      outlineWidth: '1px',
-      outlineStyle: 'solid',
-      outlineColor: 'rgba(255,255,255,0.3)',
-      outlineOffset: '-1px',
-    },
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   selected: {
-    padding: '2px',
-    backgroundColor: tokens.colorBrandForeground1,
-    filter: 'drop-shadow(0 0 4px rgba(0, 120, 212, 0.6))',
+    boxShadow: cullnoColors.selectionShadow,
   },
   picked: {
-    padding: '2px',
-    backgroundColor: tokens.colorPaletteYellowForeground1,
-    filter: 'drop-shadow(0 0 4px rgba(255, 185, 0, 0.5))',
+    boxShadow: cullnoColors.pickedShadow,
   },
   selectedPicked: {
-    padding: '2px',
-    backgroundColor: tokens.colorBrandForeground1,
-    filter: 'drop-shadow(0 0 4px rgba(0, 120, 212, 0.6))',
+    boxShadow: cullnoColors.selectedPickedShadow,
   },
   burstChild: {
     backgroundColor: cullnoColors.burstGroupBg,
   },
-  burstRep: {
-    boxShadow: '3px 3px 0 1px #484848, 6px 6px 0 1px #3e3e3e, 4px 4px 8px 0 rgba(255, 255, 255, 0.08)',
-    padding: '2px 8px 8px 2px',
+  burstLineTop1: {
+    position: 'absolute',
+    top: '12%',
+    left: '20%',
+    right: '20%',
+    height: '2px',
+    backgroundColor: cullnoColors.burstLineBright,
+    boxShadow: `0 0 4px ${cullnoColors.burstLineGlow}`,
+    borderRadius: '2px',
+    zIndex: 2,
   },
-  burstChildFirst: {
-    marginLeft: '4px',
+  burstLineTop2: {
+    position: 'absolute',
+    top: '7%',
+    left: '35%',
+    right: '35%',
+    height: '2px',
+    backgroundColor: cullnoColors.burstLineSoft,
+    borderRadius: '2px',
+    zIndex: 2,
   },
-  burstChildLast: {
-    marginRight: '4px',
+  burstLineBottom1: {
+    position: 'absolute',
+    bottom: '12%',
+    left: '20%',
+    right: '20%',
+    height: '2px',
+    backgroundColor: cullnoColors.burstLineBright,
+    boxShadow: `0 0 4px ${cullnoColors.burstLineGlow}`,
+    borderRadius: '2px',
+    zIndex: 2,
+  },
+  burstLineBottom2: {
+    position: 'absolute',
+    bottom: '7%',
+    left: '35%',
+    right: '35%',
+    height: '2px',
+    backgroundColor: cullnoColors.burstLineSoft,
+    borderRadius: '2px',
+    zIndex: 2,
   },
   image: {
     width: '100%',
     height: '100%',
     objectFit: 'contain',
     display: 'block',
-    backgroundColor: tokens.colorNeutralBackground1,
+    position: 'relative',
+    zIndex: 1,
+    margin: 'auto',
+    ':hover': {
+      filter: 'brightness(1.15)',
+    },
+  },
+  selectedImage: {
+    filter: 'brightness(1.0)',
+    ':hover': {
+      filter: 'brightness(1.0)',
+    },
   },
   placeholder: {
     width: '100%',
     height: '100%',
     backgroundColor: tokens.colorNeutralBackground4,
   },
-  trashedOverlay: {
-    position: 'absolute',
-    inset: 0,
-    backgroundColor: 'rgba(220, 38, 38, 0.3)',
-    pointerEvents: 'none',
-  },
 })
 
-function GridCell({ item, isSelected, onClick, onDoubleClick, isFirstBurstChild, isLastBurstChild }: {
+const GridCell = memo(function GridCell({ item, isCurrent, isMultiSelected, onClick, onDoubleClick, onContextMenu }: {
   item: FlatItem
-  isSelected: boolean
-  onClick: () => void
+  isCurrent: boolean
+  isMultiSelected: boolean
+  onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
-  isFirstBurstChild?: boolean
-  isLastBurstChild?: boolean
+  onContextMenu: (e: React.MouseEvent) => void
 }) {
   const styles = useCellStyles()
   const dataUrl = useThumbnail(item.image.filePath, 'preview')
   const isBurstRep = item.type === 'burst-rep' && item.burstCount && item.burstCount > 1
 
+  const highlighted = isCurrent || isMultiSelected
+
   return (
     <div
       className={mergeClasses(
         styles.cell,
-        isSelected && item.image.picked ? styles.selectedPicked
-          : isSelected ? styles.selected
+        item.type === 'burst-child' ? styles.burstChild : undefined,
+        highlighted && item.image.picked ? styles.selectedPicked
+          : highlighted ? styles.selected
           : item.image.picked ? styles.picked
-          : item.type === 'burst-child' ? styles.burstChild
           : undefined,
-        isBurstRep ? styles.burstRep : undefined,
-        isFirstBurstChild ? styles.burstChildFirst : undefined,
-        isLastBurstChild ? styles.burstChildLast : undefined,
       )}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
       role="gridcell"
-      aria-selected={isSelected}
+      aria-selected={highlighted}
+      aria-label={getBaseName(item.image.filePath)}
     >
+      {isBurstRep && <>
+        <div className={styles.burstLineTop2} />
+        <div className={styles.burstLineTop1} />
+        <div className={styles.burstLineBottom2} />
+        <div className={styles.burstLineBottom1} />
+      </>}
       {dataUrl ? (
-        <img src={dataUrl} className={styles.image} draggable={false} />
+        <img src={dataUrl} className={mergeClasses(
+          styles.image,
+          highlighted ? styles.selectedImage : undefined,
+        )} draggable={false} alt="" />
       ) : (
         <div className={styles.placeholder} />
       )}
-      {item.image.trashed && <div className={styles.trashedOverlay} />}
     </div>
   )
-}
+})
 
 export function GridView() {
   const styles = useStyles()
@@ -129,11 +168,12 @@ export function GridView() {
   const expandedGroupId = useSessionStore(s => s.expandedGroupId)
   const currentIndex = useSessionStore(s => s.currentIndex)
   const filterPickedOnly = useSessionStore(s => s.filterPickedOnly)
+  const extensionFilter = useSessionStore(s => s.extensionFilter)
   const gridThumbSize = useSessionStore(s => s.gridThumbSize)
 
   const flatItems = useMemo(
-    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly),
-    [groups, expandedGroupId, filterPickedOnly],
+    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly, extensionFilter),
+    [groups, expandedGroupId, filterPickedOnly, extensionFilter],
   )
 
   // グリッドカラム数を動的算出
@@ -178,37 +218,56 @@ export function GridView() {
     }
   }, [currentIndex])
 
-  const handleClick = useCallback((index: number) => {
-    useSessionStore.getState().setCurrentIndex(index)
+  const selectedIndices = useSelectionStore(s => s.selectedIndices)
+
+  const handleClick = useCallback((index: number, e: React.MouseEvent) => {
+    if (e.shiftKey) {
+      const cur = useSessionStore.getState().currentIndex
+      useSelectionStore.getState().rangeSelect(cur, index)
+    } else if (e.ctrlKey || e.metaKey) {
+      const sel = useSelectionStore.getState()
+      const cur = useSessionStore.getState().currentIndex
+      // 現在のカーソル位置も選択に含める（初回Ctrl+Click対策）
+      if (!sel.selectedIndices[cur]) {
+        sel.toggleSelect(cur, true)
+      }
+      sel.toggleSelect(index, true)
+      useSessionStore.getState().setCurrentIndex(index)
+    } else {
+      useSelectionStore.getState().clearSelection()
+      useSessionStore.getState().setCurrentIndex(index)
+    }
   }, [])
 
-  const handleDoubleClick = useCallback((item: FlatItem, index: number) => {
+  const handleDoubleClick = useCallback((_item: FlatItem, index: number) => {
     useSessionStore.getState().setCurrentIndex(index)
+    useSessionStore.getState().setViewMode('preview')
+  }, [])
+
+  const handleContextMenu = useCallback((item: FlatItem, index: number, e: React.MouseEvent) => {
     if (item.type === 'burst-rep' && item.group) {
+      e.preventDefault()
+      e.stopPropagation()
+      useSessionStore.getState().setCurrentIndex(index)
       useSessionStore.getState().toggleBurstExpand(item.group.id)
-    } else {
-      useSessionStore.getState().setViewMode('preview')
     }
+    // burst-rep以外はuseKeyBindingsの既存contextmenuハンドラに委譲
   }, [])
 
   return (
     <div className={styles.root}>
-      <div className={styles.grid} ref={gridRef} role="grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridThumbSize}px, 1fr))` }}>
-        {flatItems.map((item, idx) => {
-          const isFirstBurstChild = item.type === 'burst-child' && (idx === 0 || flatItems[idx - 1].type !== 'burst-child')
-          const isLastBurstChild = item.type === 'burst-child' && (idx === flatItems.length - 1 || flatItems[idx + 1].type !== 'burst-child')
-          return (
-            <GridCell
-              key={item.image.filePath}
-              item={item}
-              isSelected={idx === currentIndex}
-              onClick={() => handleClick(idx)}
-              onDoubleClick={() => handleDoubleClick(item, idx)}
-              isFirstBurstChild={isFirstBurstChild}
-              isLastBurstChild={isLastBurstChild}
-            />
-          )
-        })}
+      <div className={styles.grid} ref={gridRef} role="grid" aria-label="画像グリッド" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridThumbSize}px, 1fr))` }}>
+        {flatItems.map((item, idx) => (
+          <GridCell
+            key={item.image.filePath}
+            item={item}
+            isCurrent={idx === currentIndex}
+            isMultiSelected={!!selectedIndices[idx]}
+            onClick={(e) => handleClick(idx, e)}
+            onDoubleClick={() => handleDoubleClick(item, idx)}
+            onContextMenu={(e) => handleContextMenu(item, idx, e)}
+          />
+        ))}
       </div>
     </div>
   )

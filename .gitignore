@@ -3,5 +3,8 @@ dist/
 dist-electron/
 release/
 *.log
-*.png
 tmp-*
+skills-lock.json
+
+# スクリーンショット等（build/icon は除外しない）
+/*.png

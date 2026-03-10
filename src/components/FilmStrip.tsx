@@ -1,7 +1,8 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { makeStyles, tokens, mergeClasses } from '@fluentui/react-components'
 import { useThumbnail } from '../hooks/useThumbnail'
 import { useSessionStore, buildFlatItems, type FlatItem } from '../stores/useSessionStore'
+import { getBaseName } from '../utils/fileUtils'
 import { cullnoColors } from '../styles/tokens'
 
 const THUMB_WIDTH = 120
@@ -49,12 +50,11 @@ const useStyles = makeStyles({
     overflowX: 'auto',
     overflowY: 'hidden',
     height: '100%',
-    scrollBehavior: 'smooth',
     '::-webkit-scrollbar': {
       height: '4px',
     },
     '::-webkit-scrollbar-thumb': {
-      backgroundColor: 'rgba(255,255,255,0.15)',
+      backgroundColor: cullnoColors.scrollbarThumb,
       borderRadius: '2px',
     },
   },
@@ -63,18 +63,49 @@ const useStyles = makeStyles({
     alignItems: 'center',
     gap: `${THUMB_GAP}px`,
     backgroundColor: cullnoColors.burstGroupBg,
-    padding: '2px 8px 2px 4px',
-    borderRadius: '2px',
+    padding: '2px 4px',
     flexShrink: 0,
-    marginLeft: '4px',
-    marginRight: '4px',
-    borderLeft: `2px solid ${tokens.colorBrandForeground1}`,
+    marginLeft: '9px',
+    marginRight: '9px',
+    position: 'relative',
   },
-  burstGroupLabel: {
-    color: tokens.colorNeutralForeground4,
-    fontSize: '10px',
-    flexShrink: 0,
-    padding: '0 2px',
+  burstGroupLineLeft1: {
+    position: 'absolute',
+    left: '-4px',
+    top: '20%',
+    bottom: '20%',
+    width: '2px',
+    backgroundColor: cullnoColors.burstLineBright,
+    boxShadow: `0 0 4px ${cullnoColors.burstLineGlow}`,
+    borderRadius: '2px',
+  },
+  burstGroupLineLeft2: {
+    position: 'absolute',
+    left: '-7px',
+    top: '35%',
+    bottom: '35%',
+    width: '2px',
+    backgroundColor: cullnoColors.burstLineSoft,
+    borderRadius: '2px',
+  },
+  burstGroupLineRight1: {
+    position: 'absolute',
+    right: '-4px',
+    top: '20%',
+    bottom: '20%',
+    width: '2px',
+    backgroundColor: cullnoColors.burstLineBright,
+    boxShadow: `0 0 4px ${cullnoColors.burstLineGlow}`,
+    borderRadius: '2px',
+  },
+  burstGroupLineRight2: {
+    position: 'absolute',
+    right: '-7px',
+    top: '35%',
+    bottom: '35%',
+    width: '2px',
+    backgroundColor: cullnoColors.burstLineSoft,
+    borderRadius: '2px',
   },
 })
 
@@ -83,34 +114,25 @@ const useThumbStyles = makeStyles({
     position: 'relative',
     flexShrink: 0,
     cursor: 'pointer',
-    overflow: 'hidden',
-    padding: '0px',
-    backgroundColor: 'transparent',
-    transitionProperty: 'padding, background-color',
+    overflow: 'visible',
+    padding: '2px',
+    backgroundColor: tokens.colorNeutralBackground3,
+    transitionProperty: 'box-shadow',
     transitionDuration: '0.1s',
   },
   active: {
-    padding: '2px',
-    backgroundColor: tokens.colorBrandForeground1,
-    filter: 'drop-shadow(0 0 4px rgba(0, 120, 212, 0.6))',
+    boxShadow: cullnoColors.selectionShadow,
   },
   inactive: {
     ':hover': {
-      outlineWidth: '1px',
-      outlineStyle: 'solid',
-      outlineColor: 'rgba(255,255,255,0.3)',
-      outlineOffset: '-1px',
+      filter: 'brightness(1.15)',
     },
   },
   picked: {
-    padding: '2px',
-    backgroundColor: tokens.colorPaletteYellowForeground1,
-    filter: 'drop-shadow(0 0 4px rgba(255, 185, 0, 0.5))',
+    boxShadow: cullnoColors.pickedShadow,
   },
   activePicked: {
-    padding: '2px',
-    backgroundColor: tokens.colorBrandForeground1,
-    filter: 'drop-shadow(0 0 4px rgba(0, 120, 212, 0.6))',
+    boxShadow: cullnoColors.selectedPickedShadow,
   },
   image: {
     width: `${THUMB_WIDTH}px`,
@@ -125,30 +147,69 @@ const useThumbStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground4,
   },
   burstRep: {
-    boxShadow: '3px 3px 0 1px #484848, 6px 6px 0 1px #3e3e3e, 4px 4px 8px 0 rgba(255, 255, 255, 0.08)',
-    marginRight: '8px',
+    marginLeft: '9px',
+    marginRight: '9px',
   },
-  trashedOverlay: {
+  burstLineLeft1: {
     position: 'absolute',
-    inset: 0,
-    backgroundColor: 'rgba(220, 38, 38, 0.3)',
+    left: '-4px',
+    top: '20%',
+    bottom: '20%',
+    width: '2px',
+    backgroundColor: cullnoColors.burstLineBright,
+    boxShadow: `0 0 4px ${cullnoColors.burstLineGlow}`,
+    borderRadius: '2px',
+    zIndex: 2,
+  },
+  burstLineLeft2: {
+    position: 'absolute',
+    left: '-7px',
+    top: '35%',
+    bottom: '35%',
+    width: '2px',
+    backgroundColor: cullnoColors.burstLineSoft,
+    borderRadius: '2px',
+    zIndex: 2,
+  },
+  burstLineRight1: {
+    position: 'absolute',
+    right: '-4px',
+    top: '20%',
+    bottom: '20%',
+    width: '2px',
+    backgroundColor: cullnoColors.burstLineBright,
+    boxShadow: `0 0 4px ${cullnoColors.burstLineGlow}`,
+    borderRadius: '2px',
+    zIndex: 2,
+  },
+  burstLineRight2: {
+    position: 'absolute',
+    right: '-7px',
+    top: '35%',
+    bottom: '35%',
+    width: '2px',
+    backgroundColor: cullnoColors.burstLineSoft,
+    borderRadius: '2px',
+    zIndex: 2,
   },
 })
 
-function FilmStripThumb({ item, isActive, onClick, onDoubleClick }: {
+
+const FilmStripThumb = memo(function FilmStripThumb({ item, isActive, onClick, onDoubleClick, onContextMenu }: {
   item: FlatItem
   isActive: boolean
   onClick: () => void
   onDoubleClick: () => void
+  onContextMenu: (e: React.MouseEvent) => void
 }) {
   const styles = useThumbStyles()
-  const dataUrl = useThumbnail(item.image.filePath, 'micro')
+  const dataUrl = useThumbnail(item.image.filePath, 'preview')
   const ref = useRef<HTMLDivElement>(null)
   const isBurstRep = item.type === 'burst-rep' && item.burstCount && item.burstCount > 1
 
   useEffect(() => {
     if (isActive && ref.current) {
-      ref.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+      ref.current.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' })
     }
   }, [isActive])
 
@@ -163,20 +224,27 @@ function FilmStripThumb({ item, isActive, onClick, onDoubleClick }: {
           : styles.inactive,
         isBurstRep ? styles.burstRep : undefined,
       )}
+      role="listitem"
+      aria-current={isActive ? 'true' : undefined}
+      aria-label={getBaseName(item.image.filePath)}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
     >
+      {isBurstRep && <>
+        <div className={styles.burstLineLeft2} />
+        <div className={styles.burstLineLeft1} />
+        <div className={styles.burstLineRight2} />
+        <div className={styles.burstLineRight1} />
+      </>}
       {dataUrl ? (
-        <img src={dataUrl} className={styles.image} draggable={false} />
+        <img src={dataUrl} className={styles.image} draggable={false} alt="" />
       ) : (
         <div className={styles.placeholder} />
       )}
-      {item.image.trashed && (
-        <div className={styles.trashedOverlay} />
-      )}
     </div>
   )
-}
+})
 
 type FilmSegment =
   | { type: 'thumbs'; items: Array<{ item: FlatItem; idx: number }> }
@@ -189,11 +257,12 @@ export function FilmStrip() {
   const expandedGroupId = useSessionStore(s => s.expandedGroupId)
   const currentIndex = useSessionStore(s => s.currentIndex)
   const filterPickedOnly = useSessionStore(s => s.filterPickedOnly)
+  const extensionFilter = useSessionStore(s => s.extensionFilter)
   const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, hasMoved: false, pointerId: 0 })
 
   const flatItems = useMemo(
-    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly),
-    [groups, expandedGroupId, filterPickedOnly],
+    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly, extensionFilter),
+    [groups, expandedGroupId, filterPickedOnly, extensionFilter],
   )
 
   const segments = useMemo(() => {
@@ -254,7 +323,6 @@ export function FilmStrip() {
       ds.scrollLeft = el.scrollLeft
       // setPointerCapture は遅延（ドラッグ開始時に呼ぶ）
       ds.pointerId = e.pointerId
-      el.style.scrollBehavior = 'auto'
     }
     const onPointerMove = (e: PointerEvent) => {
       if (!ds.isDragging) return
@@ -275,7 +343,6 @@ export function FilmStrip() {
         el.releasePointerCapture(e.pointerId)
       }
       el.style.cursor = ''
-      el.style.scrollBehavior = 'smooth'
     }
 
     el.addEventListener('pointerdown', onPointerDown)
@@ -293,19 +360,25 @@ export function FilmStrip() {
     useSessionStore.getState().setCurrentIndex(index)
   }, [])
 
-  const handleDoubleClick = useCallback((item: FlatItem) => {
+  const handleDoubleClick = useCallback((_item: FlatItem) => {
+    // ダブルクリックは常にプレビューモードへ（GridViewと統一）
+    useSessionStore.getState().setViewMode('preview')
+  }, [])
+
+  const handleContextMenu = useCallback((item: FlatItem, index: number, e: React.MouseEvent) => {
     if (item.type === 'burst-rep' && item.group) {
-      useSessionStore.getState().toggleBurstExpand(item.group.id)
-    } else if (item.type === 'burst-child' && item.group) {
-      // burst-child ダブルクリックで折り畳み（トグル）
+      e.preventDefault()
+      e.stopPropagation()
+      useSessionStore.getState().setCurrentIndex(index)
       useSessionStore.getState().toggleBurstExpand(item.group.id)
     }
+    // burst-rep以外はuseKeyBindingsの既存contextmenuハンドラに委譲
   }, [])
 
   return (
-    <div className={styles.root} data-filmstrip>
+    <div className={styles.root} data-filmstrip role="list" aria-label="フィルムストリップ">
       <div className={styles.scrollContainer} ref={scrollRef}>
-        {segments.map((seg, segIdx) => {
+        {segments.map((seg) => {
           if (seg.type === 'thumbs') {
             return seg.items.map(({ item, idx }) => (
               <FilmStripThumb
@@ -314,12 +387,16 @@ export function FilmStrip() {
                 isActive={idx === currentIndex}
                 onClick={() => handleClick(item, idx)}
                 onDoubleClick={() => handleDoubleClick(item)}
+                onContextMenu={(e) => handleContextMenu(item, idx, e)}
               />
             ))
           } else {
             return (
               <div key={`burst-${seg.groupId}`} className={styles.burstGroup}>
-                <span className={styles.burstGroupLabel}>×{seg.items.length}</span>
+                <div className={styles.burstGroupLineLeft2} />
+                <div className={styles.burstGroupLineLeft1} />
+                <div className={styles.burstGroupLineRight2} />
+                <div className={styles.burstGroupLineRight1} />
                 {seg.items.map(({ item, idx }) => (
                   <FilmStripThumb
                     key={item.image.filePath}
@@ -327,6 +404,7 @@ export function FilmStrip() {
                     isActive={idx === currentIndex}
                     onClick={() => handleClick(item, idx)}
                     onDoubleClick={() => handleDoubleClick(item)}
+                    onContextMenu={(e) => handleContextMenu(item, idx, e)}
                   />
                 ))}
               </div>

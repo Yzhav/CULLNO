@@ -1,10 +1,19 @@
 import { useEffect } from 'react'
 import { useSessionStore, buildFlatItems } from '../stores/useSessionStore'
+import { useSelectionStore } from '../stores/useSelectionStore'
+import { useKeybindStore } from '../stores/useKeybindStore'
 
 export function useKeyBindings() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const s = useSessionStore.getState()
+      const tag = (e.target as HTMLElement).tagName
+      const isInputFocused = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
+
+      // Input/Textarea にフォーカスがある場合、Ctrl系ショートカット以外は無視
+      if (isInputFocused && !e.ctrlKey) return
+
+      const kb = useKeybindStore.getState().keybinds
 
       // --- グローバルショートカット（全モード共通）---
 
@@ -24,147 +33,212 @@ export function useKeyBindings() {
         return
       }
 
-      // F: フルスクリーン
-      if (e.key === 'f' && !e.ctrlKey && !e.altKey) {
-        if ((e.target as HTMLElement).tagName === 'INPUT') return
+      // Ctrl+Z: Undo
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        useSessionStore.temporal.getState().undo()
+        return
+      }
+
+      // Ctrl+Y / Ctrl+Shift+Z: Redo
+      if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'Z')) {
+        e.preventDefault()
+        useSessionStore.temporal.getState().redo()
+        return
+      }
+
+      // フルスクリーン（キーバインド設定可能）
+      if (e.key === kb.fullscreen && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cullno:fullscreen'))
         return
       }
 
-      // Q: ピック済みフィルタトグル（全モード）
-      if ((e.key === 'q' || e.key === 'Q') && !e.ctrlKey && !e.altKey) {
-        if ((e.target as HTMLElement).tagName === 'INPUT') return
+      // ピック済みフィルタトグル（全モード、キーバインド設定可能）
+      if ((e.key === kb.pickedFilter || e.key === kb.pickedFilter.toUpperCase()) && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
         s.togglePickedFilter()
         return
       }
 
+      // 比較モード直接移行（キーバインド設定時のみ有効）
+      if (kb.compare && e.key === kb.compare && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        if (s.viewMode === 'compare') {
+          s.exitCompare()  // 直前のモードに戻る
+        } else {
+          s.enterCompare()
+        }
+        return
+      }
+
       // --- 比較モード ---
       if (s.viewMode === 'compare') {
-        switch (e.key) {
-          case 'ArrowLeft':
-            e.preventDefault()
-            s.navigateBy(-1)
-            break
-          case 'ArrowRight':
-            e.preventDefault()
-            s.navigateBy(1)
-            break
-          case ' ':
-            e.preventDefault()
-            s.compareSwapPick()
-            break
-          case 'Tab':
-          case 'Escape':
-            e.preventDefault()
-            s.exitCompare()
-            break
+        if (e.key === kb.navigatePrev) {
+          e.preventDefault()
+          s.navigateBy(-1)
+          return
+        }
+        if (e.key === kb.navigateNext) {
+          e.preventDefault()
+          s.navigateBy(1)
+          return
+        }
+        if (e.key === kb.pick) {
+          e.preventDefault()
+          s.compareSwapPick()
+          return
+        }
+        // Tab: 比較→グリッドへサイクル（Tabは常にサイクル順）
+        if (e.key === kb.modeTransition) {
+          e.preventDefault()
+          s.setViewMode('grid')
+          return
+        }
+        // Escape: 比較終了（ハードコード）
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          s.exitCompare()
+          return
         }
         return
       }
 
       // --- グリッドモード ---
       if (s.viewMode === 'grid') {
-        const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly)
-        switch (e.key) {
-          case 'ArrowLeft':
-            e.preventDefault()
-            s.navigateBy(-1)
-            break
-          case 'ArrowRight':
-            e.preventDefault()
-            s.navigateBy(1)
-            break
-          case 'ArrowUp':
-            e.preventDefault()
-            s.navigateBy(-s.gridColumnCount)
-            break
-          case 'ArrowDown':
-            e.preventDefault()
-            s.navigateBy(s.gridColumnCount)
-            break
-          case ' ':
-            e.preventDefault()
-            s.togglePick()
-            break
-          case 'e':
-          case 'E':
-          case 'Enter': {
-            e.preventDefault()
-            const item = flat[s.currentIndex]
-            if (item?.type === 'burst-rep' && item.group) {
-              s.toggleBurstExpand(item.group.id)
-            } else if (item?.type === 'burst-child') {
-              s.collapseBurst()
-            } else if (e.key === 'Enter') {
-              s.setViewMode('preview')
-            }
-            break
-          }
-          case 'Escape':
-            e.preventDefault()
-            if (s.expandedGroupId) {
-              s.collapseBurst()
-            }
-            break
-          case 'Delete':
-          case 'Backspace':
-            e.preventDefault()
-            s.toggleTrash()
-            break
-        }
-        return
-      }
+        const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
 
-      // --- プレビューモード ---
-      switch (e.key) {
-        case 'ArrowLeft':
+        if (e.key === kb.navigatePrev) {
           e.preventDefault()
+          useSelectionStore.getState().clearSelection()
           s.navigateBy(-1)
-          break
-        case 'ArrowRight':
+          return
+        }
+        if (e.key === kb.navigateNext) {
           e.preventDefault()
+          useSelectionStore.getState().clearSelection()
           s.navigateBy(1)
-          break
-        case ' ':
+          return
+        }
+        if (e.key === kb.navigateUp) {
           e.preventDefault()
-          s.togglePick()
-          break
-        case 'Tab':
+          useSelectionStore.getState().clearSelection()
+          s.navigateBy(-s.gridColumnCount)
+          return
+        }
+        if (e.key === kb.navigateDown) {
           e.preventDefault()
-          s.enterCompare()
-          break
-        case 'e':
-        case 'E':
-        case 'Enter': {
+          useSelectionStore.getState().clearSelection()
+          s.navigateBy(s.gridColumnCount)
+          return
+        }
+        if (e.key === kb.pick) {
           e.preventDefault()
-          const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly)
+          if (useSelectionStore.getState().getSelectedCount() > 0) {
+            const keys = useSelectionStore.getState().getSelectedKeys()
+            const allPicked = keys.every(idx => flat[idx]?.image.picked)
+            if (allPicked) {
+              s.unpickSelected(keys)
+            } else {
+              s.pickSelected(keys)
+            }
+            useSelectionStore.getState().clearSelection()
+          } else {
+            s.togglePick()
+          }
+          return
+        }
+        // Escape: 選択クリアのみ（ハードコード）
+        if (e.key === 'Escape') {
+          if (useSelectionStore.getState().getSelectedCount() > 0) {
+            e.preventDefault()
+            useSelectionStore.getState().clearSelection()
+          }
+          return
+        }
+        // 連射展開/折畳（burstToggleキーのみ）
+        if (e.key === kb.burstToggle || e.key === kb.burstToggle.toUpperCase()) {
+          e.preventDefault()
           const item = flat[s.currentIndex]
           if (item?.type === 'burst-rep' && item.group) {
             s.toggleBurstExpand(item.group.id)
           } else if (item?.type === 'burst-child') {
             s.collapseBurst()
           }
-          break
+          return
         }
-        case 'Escape':
+        // Tab: grid → preview へサイクル
+        if (e.key === kb.modeTransition) {
           e.preventDefault()
-          if (s.expandedGroupId) {
-            s.collapseBurst()
+          s.setViewMode('preview')
+          return
+        }
+        if (e.key === kb.trash || e.key === 'Backspace') {
+          e.preventDefault()
+          if (useSelectionStore.getState().getSelectedCount() > 0) {
+            const keys = useSelectionStore.getState().getSelectedKeys()
+            s.requestDelete(keys)
+            useSelectionStore.getState().clearSelection()
           } else {
-            s.setViewMode('grid')
+            s.requestDelete()
           }
-          break
-        case 'Delete':
-        case 'Backspace':
-          e.preventDefault()
-          s.toggleTrash()
-          break
+          return
+        }
+        return
+      }
+
+      // --- プレビューモード ---
+      if (e.key === kb.navigatePrev) {
+        e.preventDefault()
+        s.navigateBy(-1)
+        return
+      }
+      if (e.key === kb.navigateNext) {
+        e.preventDefault()
+        s.navigateBy(1)
+        return
+      }
+      if (e.key === kb.pick) {
+        e.preventDefault()
+        s.togglePick()
+        return
+      }
+      // Tab: preview → compare or grid
+      if (e.key === kb.modeTransition) {
+        e.preventDefault()
+        if (kb.compare) {
+          // 比較に専用キーがあるならTab循環から除外 → gridへ
+          s.setViewMode('grid')
+        } else {
+          s.enterCompare()
+        }
+        return
+      }
+      // 連射展開/折畳（burstToggleキーのみ）
+      if (e.key === kb.burstToggle || e.key === kb.burstToggle.toUpperCase()) {
+        e.preventDefault()
+        const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+        const item = flat[s.currentIndex]
+        if (item?.type === 'burst-rep' && item.group) {
+          s.toggleBurstExpand(item.group.id)
+        } else if (item?.type === 'burst-child') {
+          s.collapseBurst()
+        }
+        return
+      }
+      // Escape: プレビューモードでは何もしない（ハードコード・選択クリアのみ）
+      if (e.key === 'Escape') {
+        // プレビューモードのEscapeは何も実行しない（Tabサイクルに統一）
+        return
+      }
+      if (e.key === kb.trash || e.key === 'Backspace') {
+        e.preventDefault()
+        s.requestDelete()
+        return
       }
     }
 
-    // 右クリックで比較モード/バースト展開から戻る
+    // 右クリックで比較モード/連射展開から戻る
     const handleContextMenu = (e: MouseEvent) => {
       const s = useSessionStore.getState()
       if (s.viewMode === 'compare') {

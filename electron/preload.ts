@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { ThumbnailSize, SessionData, AppSettings, ScanResult, ExportProgress } from '../src/types'
+import type { ThumbnailSize, SessionData, AppSettings, ScanResult, ExportProgress, KeybindConfig } from '../src/types'
 
 const api = {
   // フォルダ操作
   selectFolder: (): Promise<string | null> =>
     ipcRenderer.invoke('select-folder'),
+  selectImageFile: (): Promise<string | null> =>
+    ipcRenderer.invoke('select-image-file'),
   scanFolder: (folderPath: string): Promise<ScanResult> =>
     ipcRenderer.invoke('scan-folder', folderPath),
   listDateFolders: (basePath: string): Promise<string[]> =>
@@ -29,8 +31,8 @@ const api = {
   // ファイル操作
   moveToTrash: (filePaths: string[]): Promise<{ path: string; success: boolean }[]> =>
     ipcRenderer.invoke('move-to-trash', filePaths),
-  exportPng: (filePaths: string[], outputDir: string): Promise<{ success: boolean; count: number }> =>
-    ipcRenderer.invoke('export-png', filePaths, outputDir),
+  exportPng: (filePaths: string[], outputDir: string, suffix?: string, format?: string, quality?: number): Promise<{ success: boolean; count: number }> =>
+    ipcRenderer.invoke('export-png', filePaths, outputDir, suffix, format, quality),
   onExportProgress: (callback: (progress: ExportProgress) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: ExportProgress) => callback(progress)
     ipcRenderer.on('export-progress', handler)
@@ -70,6 +72,16 @@ const api = {
       return Promise.resolve(null)
     }
   },
+
+  // キーバインド
+  getKeybinds: (): Promise<KeybindConfig> =>
+    ipcRenderer.invoke('get-keybinds'),
+  saveKeybinds: (config: KeybindConfig): Promise<void> =>
+    ipcRenderer.invoke('save-keybinds', config),
+
+  // バージョン
+  getAppVersion: (): Promise<string> =>
+    ipcRenderer.invoke('get-app-version'),
 
   // ウィンドウ
   minimizeWindow: () => ipcRenderer.send('minimize-window'),

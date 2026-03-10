@@ -37,7 +37,7 @@ export function BurstStack({ group, isExpanded, onClick }: BurstStackProps) {
         {group.images.length}
       </Badge>
       <Text className={styles.label}>
-        {isExpanded ? '折り畳む (Esc)' : 'バースト展開 (Enter)'}
+        {isExpanded ? '折り畳む (Esc)' : '連射展開 (Enter)'}
       </Text>
     </div>
   )

@@ -28,12 +28,14 @@ export function MainView() {
   const groups = useSessionStore(s => s.groups)
   const expandedGroupId = useSessionStore(s => s.expandedGroupId)
   const filterPickedOnly = useSessionStore(s => s.filterPickedOnly)
+  const extensionFilter = useSessionStore(s => s.extensionFilter)
 
   const flatItems = useMemo(
-    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly),
-    [groups, expandedGroupId, filterPickedOnly],
+    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly, extensionFilter),
+    [groups, expandedGroupId, filterPickedOnly, extensionFilter],
   )
 
+  const showFilmStrip = useSessionStore(s => s.showFilmStrip)
   const currentItem = flatItems[currentIndex]
 
   // プレビューモード時のみプリフェッチ
@@ -50,7 +52,7 @@ export function MainView() {
   usePrefetchNeighbors(neighborPaths)
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} role="main">
 
       {viewMode === 'grid' ? (
         <GridView />
@@ -59,11 +61,10 @@ export function MainView() {
           <div className={styles.previewArea}>
             <PreviewPane
               filePath={currentItem?.image.filePath ?? null}
-              trashed={currentItem?.image.trashed}
               onClickImage={() => useSessionStore.getState().togglePick()}
             />
           </div>
-          <FilmStrip />
+          {showFilmStrip && <FilmStrip />}
         </>
       )}
     </div>

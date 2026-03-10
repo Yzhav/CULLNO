@@ -1,7 +1,17 @@
 import type { MRUEntry } from '../types'
 
 const MRU_KEY = 'cullno-mru'
-const MRU_MAX = 5
+const MRU_DEFAULT_MAX = 5
+
+let mruMaxCount = MRU_DEFAULT_MAX
+
+export function setMruMaxCount(count: number): void {
+  mruMaxCount = Math.max(1, Math.min(20, count))
+}
+
+export function getMruMaxCount(): number {
+  return mruMaxCount
+}
 
 export function loadMRU(): MRUEntry[] {
   try {
@@ -18,10 +28,8 @@ export function saveMRU(entries: MRUEntry[]): void {
 
 export function addToMRU(entry: MRUEntry): MRUEntry[] {
   const current = loadMRU()
-  // 同じパスがあれば除去
   const filtered = current.filter(e => e.folderPath !== entry.folderPath)
-  // 先頭に追加、最大数を超えたら末尾を削除
-  const updated = [entry, ...filtered].slice(0, MRU_MAX)
+  const updated = [entry, ...filtered].slice(0, mruMaxCount)
   saveMRU(updated)
   return updated
 }

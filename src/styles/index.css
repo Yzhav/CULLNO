@@ -11,6 +11,51 @@ html, body, #root {
   user-select: none;
 }
 
+/* === テーマ CSS変数 === */
+:root {
+  /* プリミティブ（テーマ不変） */
+  --cullno-selection-blue: #3b82f6;
+  --cullno-picked-gold: #d4a017;
+
+  /* 合成シャドウ（テーマ不変） */
+  --cullno-selection-shadow: inset 0 0 0 2px #3b82f6, 0 0 6px 1px rgba(59, 130, 246, 0.4), 0 0 14px 3px rgba(59, 130, 246, 0.18);
+  --cullno-picked-shadow: inset 0 0 0 2px #d4a017, 0 0 6px 1px rgba(212, 160, 23, 0.4), 0 0 14px 3px rgba(212, 160, 23, 0.18);
+  --cullno-selected-picked-shadow: inset 0 0 0 2px #d4a017, 0 0 6px 1px rgba(212, 160, 23, 0.4), 0 0 14px 3px rgba(212, 160, 23, 0.18), 0 0 24px 6px rgba(59, 130, 246, 0.2);
+  --cullno-pick-flash-shadow: inset 0 0 0 3px #d4a017, inset 0 0 20px 4px rgba(212, 160, 23, 0.3);
+}
+
+/* ダークテーマ（デフォルト） */
+:root, :root[data-theme="dark"] {
+  --cullno-burst-group-bg: rgba(255, 255, 255, 0.12);
+  --cullno-burst-line-bright: rgba(255, 255, 255, 0.7);
+  --cullno-burst-line-glow: rgba(255, 255, 255, 0.4);
+  --cullno-burst-line-soft: rgba(255, 255, 255, 0.25);
+  --cullno-welcome-bg-dark: #1a1a2e;
+  --cullno-welcome-accent: rgba(59, 130, 246, 0.06);
+  --cullno-dropzone-active-bg: rgba(59, 130, 246, 0.08);
+  --cullno-surface-hover: rgba(255, 255, 255, 0.06);
+  --cullno-surface-subtle: rgba(255, 255, 255, 0.04);
+  --cullno-surface-subtle-hover: rgba(255, 255, 255, 0.08);
+  --cullno-scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --cullno-home-bg-overlay: rgba(0, 0, 0, 0.55);
+}
+
+/* ライトテーマ */
+:root[data-theme="light"] {
+  --cullno-burst-group-bg: rgba(0, 0, 0, 0.06);
+  --cullno-burst-line-bright: rgba(0, 0, 0, 0.5);
+  --cullno-burst-line-glow: rgba(0, 0, 0, 0.2);
+  --cullno-burst-line-soft: rgba(0, 0, 0, 0.15);
+  --cullno-welcome-bg-dark: #e0e4f0;
+  --cullno-welcome-accent: rgba(59, 130, 246, 0.10);
+  --cullno-dropzone-active-bg: rgba(59, 130, 246, 0.06);
+  --cullno-surface-hover: rgba(0, 0, 0, 0.04);
+  --cullno-surface-subtle: rgba(0, 0, 0, 0.03);
+  --cullno-surface-subtle-hover: rgba(0, 0, 0, 0.06);
+  --cullno-scrollbar-thumb: rgba(0, 0, 0, 0.2);
+  --cullno-home-bg-overlay: rgba(255, 255, 255, 0.65);
+}
+
 /* スクロールバー */
 ::-webkit-scrollbar {
   width: 6px;
@@ -20,9 +65,10 @@ html, body, #root {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--cullno-scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--cullno-scrollbar-thumb);
+  opacity: 0.8;
 }

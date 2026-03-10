@@ -3,8 +3,9 @@ import { Worker } from 'worker_threads'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
-import { scanFolder, listDateFolders } from './file-scanner'
-import type { ThumbnailSize, SessionData, AppSettings } from '../src/types'
+import { scanFolder, listDateFolders, SUPPORTED_EXTENSIONS } from './file-scanner'
+import type { ThumbnailSize, SessionData, AppSettings, KeybindConfig } from '../src/types'
+import { DEFAULT_KEYBINDS } from '../src/types'
 
 const SIZE_MAP: Record<ThumbnailSize, number> = {
   micro: 64,
@@ -18,7 +19,9 @@ const WORKER_COUNT = Math.min(os.cpus().length, 8)
 const workerPool: Worker[] = []
 let nextTaskId = 0
 const pendingTasks = new Map<number, { resolve: (buf: Buffer | null) => void }>()
-const taskQueue: Array<{ id: number; filePath: string; width: number; quality: number }> = []
+type WorkerTask = { id: number; mode: 'thumbnail'; filePath: string; width: number; quality: number }
+  | { id: number; mode: 'export-png'; filePath: string; outPath: string; format?: string; quality?: number }
+const taskQueue: WorkerTask[] = []
 const idleWorkers: Worker[] = []
 
 function getWorkerPath(): string {
@@ -57,19 +60,27 @@ function dispatchNext(worker: Worker) {
   }
 }
 
-function processInWorker(filePath: string, width: number, quality: number): Promise<Buffer | null> {
+function sendToWorker(msg: Record<string, unknown>): Promise<Buffer | null> {
   return new Promise(resolve => {
     const id = nextTaskId++
     pendingTasks.set(id, { resolve })
-    const msg = { id, filePath, width, quality }
+    const task = { ...msg, id } as WorkerTask
 
     const worker = idleWorkers.pop()
     if (worker) {
-      worker.postMessage(msg)
+      worker.postMessage(task)
     } else {
-      taskQueue.push(msg)
+      taskQueue.push(task)
     }
   })
+}
+
+function processInWorker(filePath: string, width: number, quality: number): Promise<Buffer | null> {
+  return sendToWorker({ mode: 'thumbnail', filePath, width, quality })
+}
+
+function exportInWorker(filePath: string, outPath: string, format?: string, quality?: number): Promise<Buffer | null> {
+  return sendToWorker({ mode: 'export-png', filePath, outPath, format, quality })
 }
 
 // ─── Cache ───
@@ -77,6 +88,11 @@ function processInWorker(filePath: string, width: number, quality: number): Prom
 /** 設定ファイルパス */
 function getSettingsPath(): string {
   return path.join(app.getPath('userData'), 'settings.json')
+}
+
+/** キーバインドファイルパス */
+function getKeybindsPath(): string {
+  return path.join(app.getPath('userData'), 'keybinds.json')
 }
 
 /** セッションファイルパス */
@@ -101,7 +117,7 @@ function getCacheDir(rootFolder: string): string {
 function getCachePath(filePath: string, size: ThumbnailSize, rootFolder: string): string {
   const cacheDir = getCacheDir(rootFolder)
   const rel = path.relative(rootFolder, filePath).replace(/[\\/]/g, '_')
-  const name = rel.replace(/\.tga$/i, '')
+  const name = rel.replace(/\.(tga|png|jpe?g)$/i, '')
   return path.join(cacheDir, `${name}_${size}.jpg`)
 }
 
@@ -114,7 +130,19 @@ export function registerIpcHandlers() {
   ipcMain.handle('select-folder', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
-      title: 'TGAフォルダを選択',
+      title: '画像フォルダを選択',
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  // 画像ファイル選択ダイアログ
+  ipcMain.handle('select-image-file', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title: '背景画像を選択',
+      filters: [
+        { name: '画像ファイル', extensions: ['png', 'jpg', 'jpeg', 'tga', 'bmp', 'webp'] },
+      ],
     })
     return result.canceled ? null : result.filePaths[0]
   })
@@ -277,37 +305,45 @@ export function registerIpcHandlers() {
     return results
   })
 
-  // PNG変換エクスポート（これもWorkerプール経由にできるが、頻度が低いのでメインで処理）
-  ipcMain.handle('export-png', async (event, filePaths: string[], outputDir: string) => {
-    // export-pngは sharp.png() が必要でWorkerの JPEG専用とは異なるため、
-    // 動的importでメインプロセスで処理
-    const { decodeTga } = await import('./tga-decoder')
-    const sharp = (await import('sharp')).default
+  // 画像エクスポート（ワーカープール並列処理）
+  ipcMain.handle('export-png', async (event, filePaths: string[], outputDir: string, suffix?: string, format?: string, quality?: number) => {
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true })
 
-    for (let i = 0; i < filePaths.length; i++) {
-      const filePath = filePaths[i]
-      const outName = path.parse(filePath).name + '.png'
+    const ext = format === 'jpeg' ? '.jpg' : '.png'
+    let completed = 0
+    const total = filePaths.length
+
+    const tasks = filePaths.map(filePath => {
+      const outName = path.parse(filePath).name + (suffix || '') + ext
       const outPath = path.join(outputDir, outName)
-      const tga = await decodeTga(filePath)
-      await sharp(tga.pixels, {
-        raw: { width: tga.width, height: tga.height, channels: tga.channels },
-      }).png().toFile(outPath)
-      event.sender.send('export-progress', {
-        current: i + 1,
-        total: filePaths.length,
-        currentFile: path.basename(filePath),
+
+      return exportInWorker(filePath, outPath, format, quality).then(() => {
+        completed++
+        event.sender.send('export-progress', {
+          current: completed,
+          total,
+          currentFile: path.basename(filePath),
+        })
+      }).catch(err => {
+        console.error(`[Export] failed: ${filePath}`, err)
+        completed++
+        event.sender.send('export-progress', { current: completed, total, currentFile: path.basename(filePath) })
       })
-    }
-    return { success: true, count: filePaths.length }
+    })
+
+    await Promise.all(tasks)
+    return { success: true, count: total }
   })
 
-  // フォルダ内のTGAファイル数を取得
+  // フォルダ内の対応画像ファイル数を取得
   ipcMain.handle('count-tga-files', async (_event, folderPath: string) => {
     try {
       const files = await fs.promises.readdir(folderPath)
-      const tgaCount = files.filter(f => f.toLowerCase().endsWith('.tga')).length
-      return tgaCount
+      const count = files.filter(f => {
+        const ext = path.extname(f).toLowerCase()
+        return SUPPORTED_EXTENSIONS.has(ext)
+      }).length
+      return count
     } catch {
       return 0
     }
@@ -330,6 +366,24 @@ export function registerIpcHandlers() {
   ipcMain.handle('open-in-explorer', async (_event, folderPath: string) => {
     shell.openPath(folderPath)
   })
+
+  // キーバインド読み込み
+  ipcMain.handle('get-keybinds', async (): Promise<KeybindConfig> => {
+    try {
+      const data = await fs.promises.readFile(getKeybindsPath(), 'utf-8')
+      return { ...DEFAULT_KEYBINDS, ...JSON.parse(data) } as KeybindConfig
+    } catch {
+      return DEFAULT_KEYBINDS
+    }
+  })
+
+  // キーバインド保存
+  ipcMain.handle('save-keybinds', async (_event, config: KeybindConfig) => {
+    await fs.promises.writeFile(getKeybindsPath(), JSON.stringify(config, null, 2))
+  })
+
+  // バージョン
+  ipcMain.handle('get-app-version', () => app.getVersion())
 
   // ウィンドウ操作
   ipcMain.on('minimize-window', (event) => {

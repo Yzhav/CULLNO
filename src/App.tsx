@@ -1,15 +1,17 @@
-import { useEffect, useCallback } from 'react'
-import { makeStyles } from '@fluentui/react-components'
+import { useState, useEffect, useCallback } from 'react'
+import { makeStyles, FluentProvider } from '@fluentui/react-components'
+import { cullnoTheme, cullnoLightTheme } from './styles/tokens'
 import { MainView } from './components/MainView'
 import { CompareView } from './components/CompareView'
 import { WelcomeView } from './components/WelcomeView'
 import { ExportDialog } from './components/ExportDialog'
-import { TrashDialog } from './components/TrashDialog'
+import { DeleteConfirmDialog } from './components/TrashDialog'
 import { StatusBar } from './components/StatusBar'
 import { CullnoToolbar } from './components/Toolbar'
 import { useKeyBindings } from './hooks/useKeyBindings'
 import { useSessionStore } from './stores/useSessionStore'
-import { addToMRU } from './utils/mru'
+import { useKeybindStore } from './stores/useKeybindStore'
+import { addToMRU, setMruMaxCount } from './utils/mru'
 
 const useStyles = makeStyles({
   root: {
@@ -22,6 +24,8 @@ const useStyles = makeStyles({
 
 export function App() {
   const styles = useStyles()
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [uiScale, setUiScale] = useState(100)
   const viewMode = useSessionStore(s => s.viewMode)
   const folderPath = useSessionStore(s => s.folderPath)
   const images = useSessionStore(s => s.images)
@@ -35,11 +39,32 @@ export function App() {
 
   useKeyBindings()
 
+  // 起動時にキーバインド設定を読み込み
+  useEffect(() => {
+    useKeybindStore.getState().loadKeybinds()
+  }, [])
+
   // 起動時に設定を読み込み
   useEffect(() => {
     if (!window.electronAPI) return
     window.electronAPI.loadSettings().then(settings => {
       setSettings(settings)
+      if (settings.gridThumbSize) {
+        useSessionStore.getState().setGridThumbSize(settings.gridThumbSize)
+      }
+      if (settings.showFilmStrip === false) {
+        useSessionStore.getState().setShowFilmStrip(false)
+      }
+      if (settings.mruMaxCount) {
+        setMruMaxCount(settings.mruMaxCount)
+      }
+      if (settings.theme) {
+        setTheme(settings.theme)
+        document.documentElement.setAttribute('data-theme', settings.theme)
+      }
+      if (settings.uiScale) {
+        setUiScale(settings.uiScale)
+      }
       if (settings.defaultFolder) {
         setFolderPath(settings.defaultFolder)
       }
@@ -83,6 +108,11 @@ export function App() {
         await window.electronAPI.saveSettings({ ...settings, defaultFolder: path })
       }
 
+      // 連射自動展開
+      if (settings.autoExpandBurst) {
+        useSessionStore.setState({ expandedGroupId: '__all__' })
+      }
+
       if (result.images.length > 0) {
         const filePaths = result.images.map(img => img.filePath)
         window.electronAPI.generateAllPreviews(filePaths, path).then(() => {
@@ -101,6 +131,25 @@ export function App() {
       scanAndLoad(folderPath)
     }
   }, [folderPath, scanAndLoad])
+
+  // テーマ・UIスケール変更イベント
+  useEffect(() => {
+    const handleThemeChange = (e: Event) => {
+      const newTheme = (e as CustomEvent).detail as 'dark' | 'light'
+      setTheme(newTheme)
+      document.documentElement.setAttribute('data-theme', newTheme)
+    }
+    const handleScaleChange = (e: Event) => {
+      const newScale = (e as CustomEvent).detail as number
+      setUiScale(newScale)
+    }
+    window.addEventListener('cullno:theme-change', handleThemeChange)
+    window.addEventListener('cullno:scale-change', handleScaleChange)
+    return () => {
+      window.removeEventListener('cullno:theme-change', handleThemeChange)
+      window.removeEventListener('cullno:scale-change', handleScaleChange)
+    }
+  }, [])
 
   // フルスクリーン切替
   useEffect(() => {
@@ -163,19 +212,23 @@ export function App() {
     return () => window.removeEventListener('wheel', handler)
   }, [])
 
+  const currentTheme = theme === 'light' ? cullnoLightTheme : cullnoTheme
+
   return (
-    <div className={styles.root}>
-      {hasImages && <CullnoToolbar />}
-      {!hasImages ? (
-        <WelcomeView />
-      ) : viewMode === 'compare' ? (
-        <CompareView />
-      ) : (
-        <MainView />
-      )}
-      {hasImages && <StatusBar />}
-      <ExportDialog />
-      <TrashDialog />
-    </div>
+    <FluentProvider theme={currentTheme} style={{ height: '100%', zoom: uiScale !== 100 ? `${uiScale}%` : undefined }}>
+      <div className={styles.root}>
+        {hasImages && <CullnoToolbar />}
+        {!hasImages ? (
+          <WelcomeView />
+        ) : viewMode === 'compare' ? (
+          <CompareView />
+        ) : (
+          <MainView />
+        )}
+        {hasImages && <StatusBar />}
+        <ExportDialog />
+        <DeleteConfirmDialog />
+      </div>
+    </FluentProvider>
   )
 }

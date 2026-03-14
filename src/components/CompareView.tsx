@@ -55,15 +55,15 @@ export function CompareView() {
   const compareLeftIndex = useSessionStore(s => s.compareLeftIndex)
   const currentIndex = useSessionStore(s => s.currentIndex)
   const groups = useSessionStore(s => s.groups)
-  const expandedGroupId = useSessionStore(s => s.expandedGroupId)
+  const expandedGroupIds = useSessionStore(s => s.expandedGroupIds)
   const filterPickedOnly = useSessionStore(s => s.filterPickedOnly)
   const extensionFilter = useSessionStore(s => s.extensionFilter)
   const showFilmStrip = useSessionStore(s => s.showFilmStrip)
   const [flashKey, setFlashKey] = useState(0)
 
   const flatItems = useMemo(
-    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly, extensionFilter),
-    [groups, expandedGroupId, filterPickedOnly, extensionFilter],
+    () => buildFlatItems(groups, expandedGroupIds, filterPickedOnly, extensionFilter),
+    [groups, expandedGroupIds, filterPickedOnly, extensionFilter],
   )
 
   const leftItem = flatItems[compareLeftIndex]

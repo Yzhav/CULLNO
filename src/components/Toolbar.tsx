@@ -56,21 +56,38 @@ const useStyles = makeStyles({
     paddingLeft: '8px',
     paddingRight: '8px',
   },
-  fileNameClickable: {
+  fileNameArea: {
     flex: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    paddingLeft: '8px',
+    paddingRight: '8px',
+  },
+  fileNameClickable: {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     color: tokens.colorNeutralForeground3,
     fontSize: tokens.fontSizeBase200,
-    textAlign: 'center',
-    paddingLeft: '8px',
-    paddingRight: '8px',
     cursor: 'pointer',
     ':hover': {
       color: tokens.colorNeutralForeground1,
       textDecorationLine: 'underline',
     },
+  },
+  burstBadge: {
+    flexShrink: 0,
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground4,
+    backgroundColor: tokens.colorNeutralBackground5,
+    paddingLeft: '5px',
+    paddingRight: '5px',
+    paddingTop: '1px',
+    paddingBottom: '1px',
+    borderRadius: tokens.borderRadiusMedium,
   },
   actions: {
     display: 'flex',
@@ -96,7 +113,6 @@ export function CullnoToolbar() {
   const [updateChecking, setUpdateChecking] = useState(false)
   const [cacheClearConfirm, setCacheClearConfirm] = useState(false)
   const [autoExpandBurst, setAutoExpandBurst] = useState(false)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [uiScale, setUiScale] = useState(100)
   const showShortcutNav = useKeybindStore(s => s.showShortcutNav)
 
@@ -104,7 +120,6 @@ export function CullnoToolbar() {
   useEffect(() => {
     window.electronAPI?.loadSettings().then(settings => {
       if (settings.autoExpandBurst) setAutoExpandBurst(true)
-      if (settings.theme) setTheme(settings.theme)
       if (settings.uiScale) setUiScale(settings.uiScale)
     })
   }, [])
@@ -112,7 +127,7 @@ export function CullnoToolbar() {
   const viewMode = useSessionStore(s => s.viewMode)
   const currentIndex = useSessionStore(s => s.currentIndex)
   const groups = useSessionStore(s => s.groups)
-  const expandedGroupId = useSessionStore(s => s.expandedGroupId)
+  const expandedGroupIds = useSessionStore(s => s.expandedGroupIds)
   const filterPickedOnly = useSessionStore(s => s.filterPickedOnly)
   const extensionFilter = useSessionStore(s => s.extensionFilter)
   const images = useSessionStore(s => s.images)
@@ -121,8 +136,8 @@ export function CullnoToolbar() {
   const canRedo = useStoreWithEqualityFn(temporalStore, s => s.futureStates.length > 0)
 
   const flatItems = useMemo(
-    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly, extensionFilter),
-    [groups, expandedGroupId, filterPickedOnly, extensionFilter],
+    () => buildFlatItems(groups, expandedGroupIds, filterPickedOnly, extensionFilter),
+    [groups, expandedGroupIds, filterPickedOnly, extensionFilter],
   )
   const pickedCount = useMemo(() => images.filter(i => i.picked).length, [images])
 
@@ -183,21 +198,29 @@ export function CullnoToolbar() {
             </Tab>
           </TabList>
 
-          {/* ファイル名（クリックでエクスプローラーを開く） */}
-          <Tooltip content="エクスプローラーで開く" relationship="description">
-            <Text
-              className={styles.fileNameClickable}
-              title={currentFileName}
-              onClick={() => {
-                const filePath = currentItem?.image.filePath
-                if (filePath) {
-                  window.electronAPI.showItemInFolder(filePath)
-                }
-              }}
-            >
-              {currentFileName}
-            </Text>
-          </Tooltip>
+          {/* ファイル名エリア */}
+          <div className={styles.fileNameArea}>
+            <Tooltip content="エクスプローラーで開く" relationship="description">
+              <Text
+                className={styles.fileNameClickable}
+                title={currentFileName}
+                onClick={() => {
+                  const filePath = currentItem?.image.filePath
+                  if (filePath) {
+                    window.electronAPI.showItemInFolder(filePath)
+                  }
+                }}
+              >
+                {currentFileName}
+              </Text>
+            </Tooltip>
+            {currentItem?.type === 'burst-rep' && currentItem.burstCount && currentItem.burstCount > 1 && (
+              <span className={styles.burstBadge}>連射 {currentItem.burstCount}枚</span>
+            )}
+            {currentItem?.type === 'burst-child' && currentItem.group && (
+              <span className={styles.burstBadge}>連射</span>
+            )}
+          </div>
 
           {/* ピック・ゴミ箱ボタン */}
           <div className={styles.actions}>
@@ -290,7 +313,6 @@ export function CullnoToolbar() {
             ...(showShortcutNav ? ['shortcutNav'] : []),
             ...(showFilmStrip ? ['filmStrip'] : []),
             ...(autoExpandBurst ? ['autoExpand'] : []),
-            ...(theme === 'light' ? ['lightMode'] : []),
           ],
           scale: [String(uiScale)],
         }}
@@ -331,29 +353,39 @@ export function CullnoToolbar() {
               フィルムストリップ
             </MenuItemCheckbox>
             <MenuItemCheckbox name="settings" value="autoExpand"
-              onClick={async () => {
+              onClick={() => {
                 const newVal = !autoExpandBurst
                 setAutoExpandBurst(newVal)
-                await updateSettings({ autoExpandBurst: newVal })
                 const s = useSessionStore.getState()
                 if (newVal) {
-                  if (!s.expandedGroupId) {
-                    useSessionStore.setState({ expandedGroupId: '__all__' })
+                  // filePath基準で位置維持
+                  const oldFlat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
+                  const currentFilePath = oldFlat[s.currentIndex]?.image.filePath
+                  const newFlat = buildFlatItems(s.groups, ['__all__'], s.filterPickedOnly, s.extensionFilter)
+                  let newIndex = s.currentIndex
+                  if (currentFilePath) {
+                    const found = newFlat.findIndex(item => item.image.filePath === currentFilePath)
+                    if (found >= 0) newIndex = found
                   }
-                } else if (s.expandedGroupId) {
-                  useSessionStore.setState({ expandedGroupId: null, currentIndex: 0 })
+                  newIndex = Math.min(newIndex, Math.max(0, newFlat.length - 1))
+                  useSessionStore.setState({ expandedGroupIds: ['__all__'], currentIndex: newIndex })
+                } else if (s.expandedGroupIds.length > 0) {
+                  // filePath基準で位置維持
+                  const oldFlat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
+                  const currentFilePath = oldFlat[s.currentIndex]?.image.filePath
+                  const newFlat = buildFlatItems(s.groups, [], s.filterPickedOnly, s.extensionFilter)
+                  let newIndex = s.currentIndex
+                  if (currentFilePath) {
+                    const found = newFlat.findIndex(item => item.image.filePath === currentFilePath)
+                    if (found >= 0) newIndex = found
+                  }
+                  newIndex = Math.min(newIndex, Math.max(0, newFlat.length - 1))
+                  useSessionStore.setState({ expandedGroupIds: [], currentIndex: newIndex })
                 }
+                // 設定保存は非同期で（UIブロックしない）
+                updateSettings({ autoExpandBurst: newVal })
               }}>
               連射自動展開
-            </MenuItemCheckbox>
-            <MenuItemCheckbox name="settings" value="lightMode"
-              onClick={async () => {
-                const newTheme = theme === 'dark' ? 'light' : 'dark'
-                setTheme(newTheme)
-                await updateSettings({ theme: newTheme })
-                window.dispatchEvent(new CustomEvent('cullno:theme-change', { detail: newTheme }))
-              }}>
-              ライトモード
             </MenuItemCheckbox>
             <Menu persistOnItemClick>
               <MenuTrigger disableButtonEnhancement>

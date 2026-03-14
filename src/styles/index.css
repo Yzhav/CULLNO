@@ -24,8 +24,8 @@ html, body, #root {
   --cullno-pick-flash-shadow: inset 0 0 0 3px #d4a017, inset 0 0 20px 4px rgba(212, 160, 23, 0.3);
 }
 
-/* ダークテーマ（デフォルト） */
-:root, :root[data-theme="dark"] {
+/* ダークテーマ */
+:root {
   --cullno-burst-group-bg: rgba(255, 255, 255, 0.12);
   --cullno-burst-line-bright: rgba(255, 255, 255, 0.7);
   --cullno-burst-line-glow: rgba(255, 255, 255, 0.4);
@@ -38,22 +38,6 @@ html, body, #root {
   --cullno-surface-subtle-hover: rgba(255, 255, 255, 0.08);
   --cullno-scrollbar-thumb: rgba(255, 255, 255, 0.15);
   --cullno-home-bg-overlay: rgba(0, 0, 0, 0.55);
-}
-
-/* ライトテーマ */
-:root[data-theme="light"] {
-  --cullno-burst-group-bg: rgba(0, 0, 0, 0.06);
-  --cullno-burst-line-bright: rgba(0, 0, 0, 0.5);
-  --cullno-burst-line-glow: rgba(0, 0, 0, 0.2);
-  --cullno-burst-line-soft: rgba(0, 0, 0, 0.15);
-  --cullno-welcome-bg-dark: #e0e4f0;
-  --cullno-welcome-accent: rgba(59, 130, 246, 0.10);
-  --cullno-dropzone-active-bg: rgba(59, 130, 246, 0.06);
-  --cullno-surface-hover: rgba(0, 0, 0, 0.04);
-  --cullno-surface-subtle: rgba(0, 0, 0, 0.03);
-  --cullno-surface-subtle-hover: rgba(0, 0, 0, 0.06);
-  --cullno-scrollbar-thumb: rgba(0, 0, 0, 0.2);
-  --cullno-home-bg-overlay: rgba(255, 255, 255, 0.65);
 }
 
 /* スクロールバー */

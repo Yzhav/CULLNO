@@ -42,12 +42,13 @@ function matchesExtFilter(img: TgaImage, extFilter: string | null): boolean {
 /** グループを展開状態に応じてフラット化（ピック済みフィルタ・拡張子フィルタ対応） */
 export function buildFlatItems(
   groups: BurstGroup[],
-  expandedGroupId: string | null,
+  expandedGroupIds: string[],
   filterPickedOnly: boolean = false,
   extensionFilter: string | null = null,
 ): FlatItem[] {
   const items: FlatItem[] = []
   let globalIndex = 0
+  const expandedSet = new Set(expandedGroupIds)
 
   for (const group of groups) {
     if (group.isSingle) {
@@ -55,7 +56,7 @@ export function buildFlatItems(
       if (!matchesExtFilter(group.images[0], extensionFilter)) continue
       items.push({ type: 'single', image: group.images[0], globalIndex })
       globalIndex++
-    } else if (expandedGroupId === '__all__' || group.id === expandedGroupId) {
+    } else if (expandedSet.has('__all__') || expandedSet.has(group.id)) {
       for (const img of group.images) {
         if (filterPickedOnly && !img.picked) continue
         if (!matchesExtFilter(img, extensionFilter)) continue
@@ -92,7 +93,7 @@ interface SessionState {
 
   // ナビゲーション
   currentIndex: number
-  expandedGroupId: string | null
+  expandedGroupIds: string[]
   burstInnerIndex: number
 
   // 表示モード
@@ -167,7 +168,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   groups: [],
   totalSize: 0,
   currentIndex: 0,
-  expandedGroupId: null,
+  expandedGroupIds: [],
   burstInnerIndex: 0,
   viewMode: 'preview',
   compareLeftIndex: 0,
@@ -190,14 +191,14 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
     groups: result.groups,
     totalSize: result.totalSize,
     currentIndex: 0,
-    expandedGroupId: null,
+    expandedGroupIds: [],
   }),
   setScanning: (scanning) => set({ scanning }),
   setScanError: (error) => set({ scanError: error }),
 
   setCurrentIndex: (index) => {
     const s = get()
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     if (index >= 0 && index < flat.length) {
       set({ currentIndex: index })
       get().debouncedSave()
@@ -206,7 +207,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
 
   navigateBy: (delta) => {
     const s = get()
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     const next = s.currentIndex + delta
     if (next >= 0 && next < flat.length) {
       set({ currentIndex: next })
@@ -216,7 +217,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
 
   togglePick: (index?: number) => {
     const s = get()
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     const idx = index ?? s.currentIndex
     const item = flat[idx]
     if (!item) return
@@ -264,7 +265,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
 
   requestDelete: (selectedIndices?: number[]) => {
     const s = get()
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     let paths: string[]
     if (selectedIndices && selectedIndices.length > 0) {
       paths = selectedIndices.map(i => flat[i]?.image.filePath).filter(Boolean) as string[]
@@ -303,7 +304,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
       if (!hasMatch) extFilter = null
     }
 
-    const flat = buildFlatItems(newGroups, s.expandedGroupId, s.filterPickedOnly, extFilter)
+    const flat = buildFlatItems(newGroups, s.expandedGroupIds, s.filterPickedOnly, extFilter)
     const clampedIndex = flat.length === 0 ? 0 : Math.min(s.currentIndex, flat.length - 1)
 
     set({
@@ -321,14 +322,14 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   togglePickedFilter: () => {
     const s = get()
     const newFilter = !s.filterPickedOnly
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, newFilter, s.extensionFilter)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, newFilter, s.extensionFilter)
     const clampedIndex = flat.length === 0 ? 0 : Math.min(s.currentIndex, flat.length - 1)
     set({ filterPickedOnly: newFilter, currentIndex: clampedIndex })
   },
 
   setExtensionFilter: (ext) => {
     const s = get()
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, ext)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, ext)
     const clampedIndex = flat.length === 0 ? 0 : Math.min(s.currentIndex, flat.length - 1)
     set({ extensionFilter: ext, currentIndex: clampedIndex })
   },
@@ -346,7 +347,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
 
   compareSwapPick: () => {
     const s = get()
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     const leftItem = flat[s.compareLeftIndex]
     const rightItem = flat[s.currentIndex]
     if (!rightItem) return
@@ -385,29 +386,66 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
 
   toggleBurstExpand: (groupId) => {
     const s = get()
-    if (s.expandedGroupId === groupId) {
-      // 折り畳み → repのインデックスに移動
-      const flat = buildFlatItems(s.groups, null, s.filterPickedOnly, s.extensionFilter)
-      const repIndex = flat.findIndex(item => item.type === 'burst-rep' && item.group?.id === groupId)
-      set({ expandedGroupId: null, currentIndex: repIndex >= 0 ? repIndex : s.currentIndex })
-    } else {
-      set({ expandedGroupId: groupId, burstInnerIndex: 0 })
+    // グループのトグル: 含まれていれば除去、なければ追加
+    const isExpanded = s.expandedGroupIds.includes(groupId)
+    const newExpandedIds = isExpanded
+      ? s.expandedGroupIds.filter(id => id !== groupId)
+      : [...s.expandedGroupIds, groupId]
+
+    // currentIndex を維持（同じ画像パスベース）
+    const oldFlat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
+    const currentFilePath = oldFlat[s.currentIndex]?.image.filePath
+    const newFlat = buildFlatItems(s.groups, newExpandedIds, s.filterPickedOnly, s.extensionFilter)
+
+    let newIndex = s.currentIndex
+    if (currentFilePath) {
+      const found = newFlat.findIndex(item => item.image.filePath === currentFilePath)
+      if (found >= 0) {
+        newIndex = found
+      } else {
+        const repIndex = newFlat.findIndex(item => item.type === 'burst-rep' && item.group?.id === groupId)
+        if (repIndex >= 0) newIndex = repIndex
+      }
     }
+    newIndex = Math.min(newIndex, Math.max(0, newFlat.length - 1))
+
+    set({ expandedGroupIds: newExpandedIds, burstInnerIndex: 0, currentIndex: newIndex })
   },
 
   collapseBurst: () => {
     const s = get()
-    if (!s.expandedGroupId) return
-    const groupId = s.expandedGroupId
-    const flat = buildFlatItems(s.groups, null, s.filterPickedOnly, s.extensionFilter)
-    const repIndex = flat.findIndex(item => item.type === 'burst-rep' && item.group?.id === groupId)
-    set({ expandedGroupId: null, currentIndex: repIndex >= 0 ? repIndex : s.currentIndex })
+    if (s.expandedGroupIds.length === 0) return
+    // 現在の画像が属するグループを特定して折り畳む
+    const oldFlat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
+    const currentItem = oldFlat[s.currentIndex]
+    const currentGroupId = currentItem?.group?.id
+    const newExpandedIds = currentGroupId
+      ? s.expandedGroupIds.filter(id => id !== currentGroupId)
+      : []
+
+    const currentFilePath = currentItem?.image.filePath
+    const newFlat = buildFlatItems(s.groups, newExpandedIds, s.filterPickedOnly, s.extensionFilter)
+    let newIndex = s.currentIndex
+    if (currentFilePath) {
+      const found = newFlat.findIndex(item => item.image.filePath === currentFilePath)
+      if (found >= 0) {
+        newIndex = found
+      } else {
+        const repIndex = newFlat.findIndex(item => item.type === 'burst-rep' && item.group?.id === currentGroupId)
+        if (repIndex >= 0) newIndex = repIndex
+      }
+    }
+    newIndex = Math.min(newIndex, Math.max(0, newFlat.length - 1))
+    set({ expandedGroupIds: newExpandedIds, currentIndex: newIndex })
   },
 
   navigateBurstBy: (delta) => {
     const s = get()
-    if (!s.expandedGroupId) return
-    const group = s.groups.find(g => g.id === s.expandedGroupId)
+    if (s.expandedGroupIds.length === 0) return
+    // 現在のアイテムが属するグループで移動
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
+    const currentItem = flat[s.currentIndex]
+    const group = currentItem?.group ? s.groups.find(g => g.id === currentItem.group!.id) : null
     if (!group) return
     const next = s.burstInnerIndex + delta
     if (next >= 0 && next < group.images.length) {
@@ -449,7 +487,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
       images: newImages,
       groups: newGroups,
       currentIndex: Math.min(session.currentIndex, newImages.length - 1),
-      expandedGroupId: null,
+      expandedGroupIds: [],
       viewMode,
     })
   },
@@ -462,7 +500,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
       groups: [],
       totalSize: 0,
       currentIndex: 0,
-      expandedGroupId: null,
+      expandedGroupIds: [],
       viewMode: 'preview',
       compareLeftIndex: 0,
       filterPickedOnly: false,
@@ -503,7 +541,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   pickSelected: (indices) => {
     const s = get()
     if (indices.length === 0) return
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     const paths = new Set<string>()
     for (const idx of indices) {
       const item = flat[idx]
@@ -516,7 +554,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   unpickSelected: (indices) => {
     const s = get()
     if (indices.length === 0) return
-    const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+    const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     const paths = new Set<string>()
     for (const idx of indices) {
       const item = flat[idx]
@@ -536,7 +574,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
         pickedFiles: s.images.filter(i => i.picked).map(i => i.filePath),
         trashedFiles: s.images.filter(i => i.trashed).map(i => i.filePath),
         currentIndex: s.currentIndex,
-        expandedGroups: s.expandedGroupId ? [s.expandedGroupId] : [],
+        expandedGroups: s.expandedGroupIds,
         viewMode: s.viewMode,
         savedAt: new Date().toISOString(),
       }

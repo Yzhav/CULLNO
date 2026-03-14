@@ -91,6 +91,13 @@ const api = {
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('open-external', url),
 
+  // フォルダ監視
+  onFolderChanged: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('folder-changed', handler)
+    return () => ipcRenderer.removeListener('folder-changed', handler)
+  },
+
   // ウィンドウ
   minimizeWindow: () => ipcRenderer.send('minimize-window'),
   maximizeWindow: () => ipcRenderer.send('maximize-window'),

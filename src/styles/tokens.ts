@@ -1,4 +1,4 @@
-import { webDarkTheme, webLightTheme, type Theme } from '@fluentui/react-components'
+import { webDarkTheme, type Theme } from '@fluentui/react-components'
 
 /**
  * Cullno カスタムテーマ（ダーク）
@@ -13,21 +13,6 @@ export const cullnoTheme: Theme = {
   colorPaletteYellowForeground1: '#fbbf24',
   colorPaletteGreenForeground1: '#22c55e',
   colorPaletteRedForeground1: '#ef4444',
-}
-
-/**
- * Cullno カスタムテーマ（ライト）
- */
-export const cullnoLightTheme: Theme = {
-  ...webLightTheme,
-  colorNeutralBackground1: '#f5f5f5',   // 優しいオフホワイト（眩しさ軽減）
-  colorNeutralBackground3: '#ebebeb',   // ツールバー・ステータスバー
-  colorNeutralBackground4: '#e0e0e0',   // プレースホルダ
-  colorBrandForeground1: '#2563eb',
-  colorBrandForeground2: '#2563eb',
-  colorPaletteYellowForeground1: '#b8860b',
-  colorPaletteGreenForeground1: '#16a34a',
-  colorPaletteRedForeground1: '#dc2626',
 }
 
 /** コンポーネント間で共有するカスタムカラー（CSS変数参照） */

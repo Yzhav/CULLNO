@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { scanFolder, listDateFolders, SUPPORTED_EXTENSIONS } from './file-scanner'
+import { startWatching, stopWatching } from './folder-watcher'
 import type { ThumbnailSize, SessionData, AppSettings, KeybindConfig, UpdateCheckResult } from '../src/types'
 import { DEFAULT_KEYBINDS } from '../src/types'
 
@@ -148,8 +149,14 @@ export function registerIpcHandlers() {
   })
 
   // TGAスキャン
-  ipcMain.handle('scan-folder', async (_event, folderPath: string) => {
-    return await scanFolder(folderPath)
+  ipcMain.handle('scan-folder', async (event, folderPath: string) => {
+    const result = await scanFolder(folderPath)
+    // スキャン成功後にフォルダ監視を開始
+    const win = require('electron').BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      startWatching(folderPath, win)
+    }
+    return result
   })
 
   // 日付フォルダ一覧
@@ -435,6 +442,7 @@ export function registerIpcHandlers() {
 }
 
 export function cleanupWorkers() {
+  stopWatching()
   for (const worker of workerPool) {
     worker.terminate()
   }

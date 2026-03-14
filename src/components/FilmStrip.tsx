@@ -1,9 +1,12 @@
-import { useEffect, useRef, useCallback, useMemo, memo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { makeStyles, tokens, mergeClasses } from '@fluentui/react-components'
 import { useThumbnail } from '../hooks/useThumbnail'
 import { useSessionStore, buildFlatItems, type FlatItem } from '../stores/useSessionStore'
 import { getBaseName } from '../utils/fileUtils'
 import { cullnoColors } from '../styles/tokens'
+
+// バースト展開/折畳中にセルのscrollIntoViewを一時抑制するフラグ（モジュールスコープ）
+let suppressCellScroll = false
 
 const THUMB_WIDTH = 120
 const THUMB_HEIGHT = 68
@@ -208,7 +211,7 @@ const FilmStripThumb = memo(function FilmStripThumb({ item, isActive, onClick, o
   const isBurstRep = item.type === 'burst-rep' && item.burstCount && item.burstCount > 1
 
   useEffect(() => {
-    if (isActive && ref.current) {
+    if (isActive && ref.current && !suppressCellScroll) {
       ref.current.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' })
     }
   }, [isActive])
@@ -254,16 +257,55 @@ export function FilmStrip() {
   const styles = useStyles()
   const scrollRef = useRef<HTMLDivElement>(null)
   const groups = useSessionStore(s => s.groups)
-  const expandedGroupId = useSessionStore(s => s.expandedGroupId)
+  const expandedGroupIds = useSessionStore(s => s.expandedGroupIds)
   const currentIndex = useSessionStore(s => s.currentIndex)
   const filterPickedOnly = useSessionStore(s => s.filterPickedOnly)
   const extensionFilter = useSessionStore(s => s.extensionFilter)
   const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0, hasMoved: false, pointerId: 0 })
 
   const flatItems = useMemo(
-    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly, extensionFilter),
-    [groups, expandedGroupId, filterPickedOnly, extensionFilter],
+    () => buildFlatItems(groups, expandedGroupIds, filterPickedOnly, extensionFilter),
+    [groups, expandedGroupIds, filterPickedOnly, extensionFilter],
   )
+
+  // ── バースト展開/折畳時のスクロール位置補正 ──
+  const prevExpandedRef = useRef(expandedGroupIds)
+  const scrollAnchorRef = useRef<{ scrollLeft: number; cellViewportLeft: number } | null>(null)
+
+  // レンダー中（DOM未更新）: expandedGroupIdsが変わったら旧DOMからアクティブセルの位置をキャプチャ
+  if (prevExpandedRef.current !== expandedGroupIds && scrollRef.current) {
+    const activeCell = scrollRef.current.querySelector('[aria-current="true"]') as HTMLElement | null
+    if (activeCell) {
+      const containerRect = scrollRef.current.getBoundingClientRect()
+      const cellRect = activeCell.getBoundingClientRect()
+      scrollAnchorRef.current = {
+        scrollLeft: scrollRef.current.scrollLeft,
+        cellViewportLeft: cellRect.left - containerRect.left,
+      }
+    }
+  }
+
+  // DOM更新後: 新しいアクティブセルの位置を取得し、スクロールを補正
+  useLayoutEffect(() => {
+    if (prevExpandedRef.current !== expandedGroupIds) {
+      suppressCellScroll = true
+      const anchor = scrollAnchorRef.current
+      const el = scrollRef.current
+      if (anchor && el) {
+        const activeCell = el.querySelector('[aria-current="true"]') as HTMLElement | null
+        if (activeCell) {
+          const containerRect = el.getBoundingClientRect()
+          const cellRect = activeCell.getBoundingClientRect()
+          const newViewportLeft = cellRect.left - containerRect.left
+          const shift = newViewportLeft - anchor.cellViewportLeft
+          el.scrollLeft += shift
+        }
+      }
+      scrollAnchorRef.current = null
+      prevExpandedRef.current = expandedGroupIds
+      requestAnimationFrame(() => { suppressCellScroll = false })
+    }
+  }, [expandedGroupIds])
 
   const segments = useMemo(() => {
     const result: FilmSegment[] = []
@@ -365,11 +407,10 @@ export function FilmStrip() {
     useSessionStore.getState().setViewMode('preview')
   }, [])
 
-  const handleContextMenu = useCallback((item: FlatItem, index: number, e: React.MouseEvent) => {
+  const handleContextMenu = useCallback((item: FlatItem, _index: number, e: React.MouseEvent) => {
     if (item.type === 'burst-rep' && item.group) {
       e.preventDefault()
       e.stopPropagation()
-      useSessionStore.getState().setCurrentIndex(index)
       useSessionStore.getState().toggleBurstExpand(item.group.id)
     }
     // burst-rep以外はuseKeyBindingsの既存contextmenuハンドラに委譲

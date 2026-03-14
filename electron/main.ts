@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 import { registerIpcHandlers, cleanupWorkers } from './ipc-handlers'
@@ -11,11 +11,12 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
+    show: false,
     backgroundColor: '#1e1e1e',
     icon: join(__dirname, '../build/icon.png'),
-    // 標準ウィンドウフレーム（確実にドラッグ・最小化・最大化が動作する）
     frame: true,
     autoHideMenuBar: true,
+    darkTheme: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -38,6 +39,10 @@ function createWindow() {
   } else {
     mainWindow.loadFile(join(__dirname, '../dist/index.html'))
   }
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    mainWindow?.show()
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -63,6 +68,9 @@ if (app.isPackaged) {
 Menu.setApplicationMenu(null)
 
 app.whenReady().then(() => {
+  // Windows環境でもタイトルバーをダークに強制
+  nativeTheme.themeSource = 'dark'
+
   // 起動時キャッシュ診断
   const cacheRoot = join(app.getPath('userData'), 'thumb-cache')
   console.log('[Startup] userData:', app.getPath('userData'))

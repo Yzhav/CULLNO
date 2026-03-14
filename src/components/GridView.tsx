@@ -164,16 +164,18 @@ const GridCell = memo(function GridCell({ item, isCurrent, isMultiSelected, onCl
 export function GridView() {
   const styles = useStyles()
   const gridRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const dragState = useRef({ isDragging: false, startY: 0, scrollTop: 0, hasMoved: false, pointerId: 0 })
   const groups = useSessionStore(s => s.groups)
-  const expandedGroupId = useSessionStore(s => s.expandedGroupId)
+  const expandedGroupIds = useSessionStore(s => s.expandedGroupIds)
   const currentIndex = useSessionStore(s => s.currentIndex)
   const filterPickedOnly = useSessionStore(s => s.filterPickedOnly)
   const extensionFilter = useSessionStore(s => s.extensionFilter)
   const gridThumbSize = useSessionStore(s => s.gridThumbSize)
 
   const flatItems = useMemo(
-    () => buildFlatItems(groups, expandedGroupId, filterPickedOnly, extensionFilter),
-    [groups, expandedGroupId, filterPickedOnly, extensionFilter],
+    () => buildFlatItems(groups, expandedGroupIds, filterPickedOnly, extensionFilter),
+    [groups, expandedGroupIds, filterPickedOnly, extensionFilter],
   )
 
   // グリッドカラム数を動的算出
@@ -209,6 +211,7 @@ export function GridView() {
 
   // 選択セルを可視範囲に
   useEffect(() => {
+    if (dragState.current.isDragging) return
     const el = gridRef.current?.parentElement
     if (!el) return
     const cells = gridRef.current?.querySelectorAll('[role="gridcell"]')
@@ -218,9 +221,57 @@ export function GridView() {
     }
   }, [currentIndex])
 
+  // ドラッグスクロール（垂直方向）
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const ds = dragState.current
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return
+      ds.isDragging = true
+      ds.hasMoved = false
+      ds.startY = e.clientY
+      ds.scrollTop = el.scrollTop
+      ds.pointerId = e.pointerId
+    }
+    const onPointerMove = (e: PointerEvent) => {
+      if (!ds.isDragging) return
+      const dy = e.clientY - ds.startY
+      if (Math.abs(dy) > 3 && !ds.hasMoved) {
+        ds.hasMoved = true
+        el.setPointerCapture(ds.pointerId)
+        el.style.cursor = 'grabbing'
+      }
+      if (ds.hasMoved) {
+        el.scrollTop = ds.scrollTop - dy
+      }
+    }
+    const onPointerUp = (e: PointerEvent) => {
+      if (!ds.isDragging) return
+      ds.isDragging = false
+      if (ds.hasMoved) {
+        el.releasePointerCapture(e.pointerId)
+      }
+      el.style.cursor = ''
+      // clickイベント発火を待ってからhasMovedリセット
+      setTimeout(() => { ds.hasMoved = false }, 0)
+    }
+
+    el.addEventListener('pointerdown', onPointerDown)
+    el.addEventListener('pointermove', onPointerMove)
+    el.addEventListener('pointerup', onPointerUp)
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown)
+      el.removeEventListener('pointermove', onPointerMove)
+      el.removeEventListener('pointerup', onPointerUp)
+    }
+  }, [])
+
   const selectedIndices = useSelectionStore(s => s.selectedIndices)
 
   const handleClick = useCallback((index: number, e: React.MouseEvent) => {
+    if (dragState.current.hasMoved) return
     if (e.shiftKey) {
       const cur = useSessionStore.getState().currentIndex
       useSelectionStore.getState().rangeSelect(cur, index)
@@ -240,22 +291,22 @@ export function GridView() {
   }, [])
 
   const handleDoubleClick = useCallback((_item: FlatItem, index: number) => {
+    if (dragState.current.hasMoved) return
     useSessionStore.getState().setCurrentIndex(index)
     useSessionStore.getState().setViewMode('preview')
   }, [])
 
-  const handleContextMenu = useCallback((item: FlatItem, index: number, e: React.MouseEvent) => {
+  const handleContextMenu = useCallback((item: FlatItem, _index: number, e: React.MouseEvent) => {
     if (item.type === 'burst-rep' && item.group) {
       e.preventDefault()
       e.stopPropagation()
-      useSessionStore.getState().setCurrentIndex(index)
       useSessionStore.getState().toggleBurstExpand(item.group.id)
     }
     // burst-rep以外はuseKeyBindingsの既存contextmenuハンドラに委譲
   }, [])
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} ref={scrollRef}>
       <div className={styles.grid} ref={gridRef} role="grid" aria-label="画像グリッド" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridThumbSize}px, 1fr))` }}>
         {flatItems.map((item, idx) => (
           <GridCell

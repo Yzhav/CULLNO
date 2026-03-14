@@ -110,7 +110,7 @@ export function useKeyBindings() {
 
       // --- グリッドモード ---
       if (s.viewMode === 'grid') {
-        const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+        const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
 
         if (e.key === kb.navigatePrev) {
           e.preventDefault()
@@ -221,7 +221,7 @@ export function useKeyBindings() {
       // 連射展開/折畳（burstToggleキーのみ）
       if (e.key === kb.burstToggle || e.key === kb.burstToggle.toUpperCase()) {
         e.preventDefault()
-        const flat = buildFlatItems(s.groups, s.expandedGroupId, s.filterPickedOnly, s.extensionFilter)
+        const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
         const item = flat[s.currentIndex]
         if (item?.type === 'burst-rep' && item.group) {
           s.toggleBurstExpand(item.group.id)
@@ -248,7 +248,7 @@ export function useKeyBindings() {
       if (s.viewMode === 'compare') {
         e.preventDefault()
         s.exitCompare()
-      } else if (s.expandedGroupId) {
+      } else if (s.expandedGroupIds.length > 0) {
         e.preventDefault()
         s.collapseBurst()
       }

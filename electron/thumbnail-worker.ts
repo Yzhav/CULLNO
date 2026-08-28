@@ -1,6 +1,6 @@
 import { parentPort } from 'worker_threads'
 import * as path from 'path'
-import sharp from 'sharp'
+import sharp, { type Sharp } from 'sharp'
 import { decodeTga } from './tga-decoder'
 
 interface ThumbnailRequest {
@@ -29,7 +29,7 @@ interface WorkerResponse {
 }
 
 /** TGA/PNG/JPG → sharp pipeline を取得 */
-function createPipeline(filePath: string): Promise<sharp.Sharp> {
+function createPipeline(filePath: string): Promise<Sharp> {
   const ext = path.extname(filePath).toLowerCase()
   if (ext === '.tga') {
     return decodeTga(filePath).then(tga =>
@@ -53,7 +53,7 @@ parentPort?.on('message', async (req: WorkerRequest) => {
       }
       parentPort?.postMessage({ id: req.id, buffer: null, error: null } as WorkerResponse)
     } else {
-      // サムネイル: JEPGバッファを返却
+      // サムネイル: JPEGバッファを返却
       const pipeline = await createPipeline(req.filePath)
       const buffer = await pipeline
         .resize(req.width, undefined, { fit: 'inside', withoutEnlargement: true })

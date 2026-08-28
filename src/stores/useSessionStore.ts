@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { temporal } from 'zundo'
 import type { TgaImage, BurstGroup, ViewMode, ScanResult, SessionData, AppSettings } from '../types'
+import { updateSettings } from '../utils/settingsUtils'
 
 /** 指定パスの画像のpicked状態を一括更新する */
 function updatePickedByPaths(
@@ -68,9 +69,10 @@ export function buildFlatItems(
         (!filterPickedOnly || img.picked) && matchesExtFilter(img, extensionFilter)
       )
       if (filtered.length === 0) continue
+      const representative = filtered.find(img => img.filePath === group.representative.filePath) ?? filtered[0]
       items.push({
         type: 'burst-rep',
-        image: group.representative,
+        image: representative,
         group,
         burstCount: filtered.length,
         globalIndex,
@@ -134,6 +136,7 @@ interface SessionState {
   pickAll: () => void
   unpickAll: () => void
   pendingDeletePaths: string[] | null
+  deleteError: string | null
   requestDelete: (selectedIndices?: number[]) => void
   confirmDelete: () => Promise<void>
   cancelDelete: () => void
@@ -183,6 +186,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   lastFolderPath: null,
   previewProgress: null,
   pendingDeletePaths: null,
+  deleteError: null,
 
   setFolderPath: (path) => set({ folderPath: path }),
   setSettings: (settings) => set({ settings }),
@@ -192,6 +196,8 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
     totalSize: result.totalSize,
     currentIndex: 0,
     expandedGroupIds: [],
+    pendingDeletePaths: null,
+    deleteError: null,
   }),
   setScanning: (scanning) => set({ scanning }),
   setScanError: (error) => set({ scanError: error }),
@@ -273,7 +279,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
       const item = flat[s.currentIndex]
       paths = item ? [item.image.filePath] : []
     }
-    if (paths.length > 0) set({ pendingDeletePaths: paths })
+    if (paths.length > 0) set({ pendingDeletePaths: paths, deleteError: null })
   },
 
   confirmDelete: async () => {
@@ -281,14 +287,26 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
     const paths = s.pendingDeletePaths
     if (!paths || paths.length === 0) return
 
-    await window.electronAPI.moveToTrash(paths)
+    const results = await window.electronAPI.moveToTrash(paths)
+    const successfulPaths = new Set(results.filter(result => result.success).map(result => result.path))
+    const failedPaths = results.filter(result => !result.success).map(result => result.path)
+    if (successfulPaths.size === 0) {
+      set({
+        pendingDeletePaths: failedPaths,
+        deleteError: `${failedPaths.length} 枚のファイルを trash フォルダへ移動できませんでした`,
+      })
+      return
+    }
 
-    const pathSet = new Set(paths)
-    const newImages = s.images.filter(img => !pathSet.has(img.filePath))
-    const newGroups = s.groups.map(g => {
-      const filtered = g.images.filter(img => !pathSet.has(img.filePath))
+    const current = get()
+    const removedSize = current.images
+      .filter(img => successfulPaths.has(img.filePath))
+      .reduce((sum, img) => sum + img.fileSize, 0)
+    const newImages = current.images.filter(img => !successfulPaths.has(img.filePath))
+    const newGroups = current.groups.map(g => {
+      const filtered = g.images.filter(img => !successfulPaths.has(img.filePath))
       if (filtered.length === 0) return null
-      const rep = pathSet.has(g.representative.filePath) ? filtered[0] : g.representative
+      const rep = successfulPaths.has(g.representative.filePath) ? filtered[0] : g.representative
       return {
         ...g,
         images: filtered,
@@ -298,26 +316,30 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
     }).filter(Boolean) as BurstGroup[]
 
     // 拡張子フィルタの整合性チェック: フィルタ対象が0件になったらリセット
-    let extFilter = s.extensionFilter
+    let extFilter = current.extensionFilter
     if (extFilter) {
       const hasMatch = newImages.some(img => matchesExtFilter(img, extFilter))
       if (!hasMatch) extFilter = null
     }
 
-    const flat = buildFlatItems(newGroups, s.expandedGroupIds, s.filterPickedOnly, extFilter)
-    const clampedIndex = flat.length === 0 ? 0 : Math.min(s.currentIndex, flat.length - 1)
+    const flat = buildFlatItems(newGroups, current.expandedGroupIds, current.filterPickedOnly, extFilter)
+    const clampedIndex = flat.length === 0 ? 0 : Math.min(current.currentIndex, flat.length - 1)
 
     set({
       images: newImages,
       groups: newGroups,
+      totalSize: Math.max(0, current.totalSize - removedSize),
       currentIndex: clampedIndex,
       extensionFilter: extFilter,
-      pendingDeletePaths: null,
+      pendingDeletePaths: failedPaths.length > 0 ? failedPaths : null,
+      deleteError: failedPaths.length > 0
+        ? `${failedPaths.length} 枚のファイルを trash フォルダへ移動できませんでした`
+        : null,
     })
     get().debouncedSave()
   },
 
-  cancelDelete: () => set({ pendingDeletePaths: null }),
+  cancelDelete: () => set({ pendingDeletePaths: null, deleteError: null }),
 
   togglePickedFilter: () => {
     const s = get()
@@ -482,11 +504,15 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
     if (session.viewMode === 'grid' || session.viewMode === 'preview' || session.viewMode === 'compare') {
       viewMode = session.viewMode
     }
+    const restoredFlat = buildFlatItems(newGroups, [], s.filterPickedOnly, s.extensionFilter)
+    const restoredIndex = restoredFlat.length === 0
+      ? 0
+      : Math.max(0, Math.min(session.currentIndex, restoredFlat.length - 1))
 
     set({
       images: newImages,
       groups: newGroups,
-      currentIndex: Math.min(session.currentIndex, newImages.length - 1),
+      currentIndex: restoredIndex,
       expandedGroupIds: [],
       viewMode,
     })
@@ -509,6 +535,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
       scanError: null,
       lastFolderPath: currentFolder,
       pendingDeletePaths: null,
+      deleteError: null,
     })
   },
 
@@ -517,23 +544,25 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   setGridColumnCount: (count) => set({ gridColumnCount: count }),
 
   setShowFilmStrip: (show) => {
-    set({ showFilmStrip: show })
-    // 設定に保存
+    set(s => ({ showFilmStrip: show, settings: { ...s.settings, showFilmStrip: show } }))
     if (!window.electronAPI) return
-    window.electronAPI.loadSettings().then(settings => {
-      window.electronAPI.saveSettings({ ...settings, showFilmStrip: show })
+    void updateSettings({ showFilmStrip: show }).catch(error => {
+      console.error('[Settings] failed to save showFilmStrip:', error)
     })
   },
 
   setGridThumbSize: (size) => {
     const clamped = Math.max(100, Math.min(300, size))
-    set({ gridThumbSize: clamped })
+    set(s => ({ gridThumbSize: clamped, settings: { ...s.settings, gridThumbSize: clamped } }))
     // デバウンスで設定に保存
     if (thumbSaveTimer) clearTimeout(thumbSaveTimer)
     thumbSaveTimer = setTimeout(async () => {
       if (!window.electronAPI) return
-      const settings = await window.electronAPI.loadSettings()
-      await window.electronAPI.saveSettings({ ...settings, gridThumbSize: clamped })
+      try {
+        await updateSettings({ gridThumbSize: clamped })
+      } catch (error) {
+        console.error('[Settings] failed to save gridThumbSize:', error)
+      }
     }, 1000)
   },
 
@@ -578,7 +607,9 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
         viewMode: s.viewMode,
         savedAt: new Date().toISOString(),
       }
-      window.electronAPI.saveSession(data)
+      window.electronAPI.saveSession(data).catch(error => {
+        console.error('[Session] failed to save:', error)
+      })
     }, 500)
   },
 }),

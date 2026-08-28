@@ -85,6 +85,7 @@ export function CompareView() {
           </div>
           <PreviewPane
             filePath={leftItem?.image.filePath ?? null}
+            modifiedAt={leftItem?.image.modifiedAt}
           />
         </div>
         <div className={styles.pane} role="region" aria-label="比較: 右（送り）">
@@ -93,6 +94,7 @@ export function CompareView() {
           </div>
           <PreviewPane
             filePath={rightItem?.image.filePath ?? null}
+            modifiedAt={rightItem?.image.modifiedAt}
             onClickImage={() => useSessionStore.getState().compareSwapPick()}
           />
           {flashKey > 0 && <div key={flashKey} className={styles.pickFlash} />}

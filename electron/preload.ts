@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { ThumbnailSize, SessionData, AppSettings, ScanResult, ExportProgress, KeybindConfig, UpdateCheckResult } from '../src/types'
+import type { ThumbnailSize, SessionData, AppSettings, ScanResult, ExportFormat, ExportProgress, ExportResult, KeybindConfig, UpdateCheckResult } from '../src/types'
 
 const api = {
   // フォルダ操作
@@ -31,7 +31,7 @@ const api = {
   // ファイル操作
   moveToTrash: (filePaths: string[]): Promise<{ path: string; success: boolean }[]> =>
     ipcRenderer.invoke('move-to-trash', filePaths),
-  exportPng: (filePaths: string[], outputDir: string, suffix?: string, format?: string, quality?: number): Promise<{ success: boolean; count: number }> =>
+  exportPng: (filePaths: string[], outputDir: string, suffix?: string, format?: ExportFormat, quality?: number): Promise<ExportResult> =>
     ipcRenderer.invoke('export-png', filePaths, outputDir, suffix, format, quality),
   onExportProgress: (callback: (progress: ExportProgress) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: ExportProgress) => callback(progress)

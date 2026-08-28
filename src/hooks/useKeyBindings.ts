@@ -41,6 +41,7 @@ export function useKeyBindings() {
       if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
         useSessionStore.temporal.getState().undo()
+        s.debouncedSave()
         return
       }
 
@@ -48,6 +49,7 @@ export function useKeyBindings() {
       if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'Z')) {
         e.preventDefault()
         useSessionStore.temporal.getState().redo()
+        s.debouncedSave()
         return
       }
 

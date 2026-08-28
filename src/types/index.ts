@@ -6,6 +6,8 @@ export interface TgaImage {
   baseName: string
   /** ファイルサイズ(bytes) */
   fileSize: number
+  /** ファイル更新時刻（サムネイルキャッシュの無効化に使用） */
+  modifiedAt: number
   /** パースしたタイムスタンプ */
   timestamp: Date
   /** バースト連番（_0, _1, ...） */
@@ -106,6 +108,13 @@ export interface ExportProgress {
   current: number
   total: number
   currentFile: string
+}
+
+/** エクスポート結果 */
+export interface ExportResult {
+  success: boolean
+  count: number
+  failedFiles: string[]
 }
 
 /** アップデート確認結果 */

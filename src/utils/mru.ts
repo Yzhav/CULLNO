@@ -17,7 +17,8 @@ export function loadMRU(): MRUEntry[] {
   try {
     const raw = localStorage.getItem(MRU_KEY)
     return raw ? JSON.parse(raw) : []
-  } catch {
+  } catch (error) {
+    console.warn('[MRU] failed to load saved entries:', error)
     return []
   }
 }

@@ -21,16 +21,25 @@ const useStyles = makeStyles({
 export function DeleteConfirmDialog() {
   const styles = useStyles()
   const [deleting, setDeleting] = useState(false)
+  const [operationError, setOperationError] = useState<string | null>(null)
   const pendingDeletePaths = useSessionStore(s => s.pendingDeletePaths)
+  const deleteError = useSessionStore(s => s.deleteError)
   const open = pendingDeletePaths !== null && pendingDeletePaths.length > 0
 
   const handleConfirm = async () => {
     setDeleting(true)
-    await useSessionStore.getState().confirmDelete()
-    setDeleting(false)
+    setOperationError(null)
+    try {
+      await useSessionStore.getState().confirmDelete()
+    } catch (error) {
+      setOperationError(String(error))
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const handleCancel = () => {
+    setOperationError(null)
     useSessionStore.getState().cancelDelete()
   }
 
@@ -45,6 +54,9 @@ export function DeleteConfirmDialog() {
               <Text className={styles.warning}>
                 元フォルダ内の trash/ に移動されます
               </Text>
+              {(operationError || deleteError) && (
+                <Text className={styles.warning}>{operationError || deleteError}</Text>
+              )}
             </div>
           </DialogContent>
           <DialogActions>

@@ -206,7 +206,7 @@ const FilmStripThumb = memo(function FilmStripThumb({ item, isActive, onClick, o
   onContextMenu: (e: React.MouseEvent) => void
 }) {
   const styles = useThumbStyles()
-  const dataUrl = useThumbnail(item.image.filePath, 'preview')
+  const dataUrl = useThumbnail(item.image.filePath, 'preview', item.image.modifiedAt)
   const ref = useRef<HTMLDivElement>(null)
   const isBurstRep = item.type === 'burst-rep' && item.burstCount && item.burstCount > 1
 

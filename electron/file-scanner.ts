@@ -12,19 +12,38 @@ export const SUPPORTED_EXTENSIONS = new Set(['.tga', '.png', '.jpg', '.jpeg'])
 const TGA_PATTERN = /^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})\.(\d+)_(\d+)\.tga$/i
 
 /** ファイル名からタイムスタンプとバースト番号をパース */
-function parseTgaFilename(filename: string): { timestamp: Date; burstIndex: number } | null {
+function parseTgaFilename(filename: string): { timestamp: Date; sortTime: number; burstIndex: number } | null {
   const match = filename.match(TGA_PATTERN)
   if (!match) return null
 
-  const [, date, h, m, s, _sub, burst] = match
+  const [, date, h, m, s, sub, burst] = match
   const [year, month, day] = date.split('-').map(Number)
   const timestamp = new Date(year, month - 1, day, Number(h), Number(m), Number(s))
-  return { timestamp, burstIndex: Number(burst) }
+  if (
+    timestamp.getFullYear() !== year || timestamp.getMonth() !== month - 1 ||
+    timestamp.getDate() !== day || timestamp.getHours() !== Number(h) ||
+    timestamp.getMinutes() !== Number(m) || timestamp.getSeconds() !== Number(s)
+  ) {
+    return null
+  }
+  const sortTime = timestamp.getTime() + Number(`0.${sub}`) * 1000
+  return { timestamp, sortTime, burstIndex: Number(burst) }
 }
 
 /** フォルダを再帰的にスキャンして対応画像ファイルを収集 */
-async function collectImageFiles(dirPath: string, images: TgaImage[], totalSizeRef: { value: number }) {
-  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
+async function collectImageFiles(
+  dirPath: string,
+  images: TgaImage[],
+  sortTimes: Map<string, number>,
+  totalSizeRef: { value: number },
+) {
+  let entries: fs.Dirent[]
+  try {
+    entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
 
   for (const entry of entries) {
     const fullPath = path.join(dirPath, entry.name)
@@ -32,7 +51,7 @@ async function collectImageFiles(dirPath: string, images: TgaImage[], totalSizeR
     if (entry.isDirectory()) {
       const dirLower = entry.name.toLowerCase()
       if (dirLower === 'trash') continue
-      await collectImageFiles(fullPath, images, totalSizeRef)
+      await collectImageFiles(fullPath, images, sortTimes, totalSizeRef)
       continue
     }
 
@@ -40,44 +59,55 @@ async function collectImageFiles(dirPath: string, images: TgaImage[], totalSizeR
     const ext = path.extname(entry.name).toLowerCase()
     if (!SUPPORTED_EXTENSIONS.has(ext)) continue
 
-    const stat = await fs.promises.stat(fullPath)
+    let stat: fs.Stats
+    try {
+      stat = await fs.promises.stat(fullPath)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+      throw error
+    }
     const parsed = parseTgaFilename(entry.name)
 
     images.push({
       filePath: fullPath,
       baseName: path.parse(entry.name).name,
       fileSize: stat.size,
+      modifiedAt: stat.mtimeMs,
       timestamp: parsed?.timestamp ?? stat.mtime,
       burstIndex: parsed?.burstIndex ?? 0,
       picked: false,
       trashed: false,
     })
+    sortTimes.set(fullPath, parsed?.sortTime ?? stat.mtimeMs)
     totalSizeRef.value += stat.size
   }
 }
 
 /** フォルダ内のTGAファイルをスキャン（子フォルダを再帰） */
 export async function scanFolder(folderPath: string): Promise<ScanResult> {
-  // ファイルパスが渡された場合、親フォルダに解決
-  const stat = await fs.promises.stat(folderPath)
-  if (!stat.isDirectory()) {
-    folderPath = path.dirname(folderPath)
-  }
+  folderPath = await resolveFolderPath(folderPath)
 
   const images: TgaImage[] = []
+  const sortTimes = new Map<string, number>()
   const totalSizeRef = { value: 0 }
-  await collectImageFiles(folderPath, images, totalSizeRef)
+  await collectImageFiles(folderPath, images, sortTimes, totalSizeRef)
   const totalSize = totalSizeRef.value
 
-  // タイムスタンプ + バーストインデックスでソート
+  // 撮影時刻（小数秒を含む）+ バーストインデックスでソート
   images.sort((a, b) => {
-    const timeDiff = a.timestamp.getTime() - b.timestamp.getTime()
+    const timeDiff = (sortTimes.get(a.filePath) ?? a.modifiedAt) - (sortTimes.get(b.filePath) ?? b.modifiedAt)
     if (timeDiff !== 0) return timeDiff
     return a.burstIndex - b.burstIndex
   })
 
   const groups = groupByBurst(images)
   return { images, groups, totalSize }
+}
+
+/** ファイルパスが渡された場合は親フォルダへ解決 */
+export async function resolveFolderPath(folderPath: string): Promise<string> {
+  const stat = await fs.promises.stat(folderPath)
+  return stat.isDirectory() ? folderPath : path.dirname(folderPath)
 }
 
 /** _0 区切りでバーストグルーピング */
@@ -123,7 +153,8 @@ export async function listDateFolders(basePath: string): Promise<string[]> {
       .map(e => e.name)
       .sort()
       .reverse()
-  } catch {
-    return []
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
   }
 }

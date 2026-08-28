@@ -121,7 +121,7 @@ const GridCell = memo(function GridCell({ item, isCurrent, isMultiSelected, onCl
   onContextMenu: (e: React.MouseEvent) => void
 }) {
   const styles = useCellStyles()
-  const dataUrl = useThumbnail(item.image.filePath, 'preview')
+  const dataUrl = useThumbnail(item.image.filePath, 'preview', item.image.modifiedAt)
   const isBurstRep = item.type === 'burst-rep' && item.burstCount && item.burstCount > 1
 
   const highlighted = isCurrent || isMultiSelected
@@ -177,6 +177,15 @@ export function GridView() {
     () => buildFlatItems(groups, expandedGroupIds, filterPickedOnly, extensionFilter),
     [groups, expandedGroupIds, filterPickedOnly, extensionFilter],
   )
+  const flatPathKey = useMemo(
+    () => flatItems.map(item => item.image.filePath).join('\u0000'),
+    [flatItems],
+  )
+
+  // フィルタや展開でindexの意味が変わった場合、別画像への選択ずれを防ぐ
+  useEffect(() => {
+    useSelectionStore.getState().clearSelection()
+  }, [flatPathKey])
 
   // グリッドカラム数を動的算出
   useEffect(() => {
@@ -279,7 +288,7 @@ export function GridView() {
       const sel = useSelectionStore.getState()
       const cur = useSessionStore.getState().currentIndex
       // 現在のカーソル位置も選択に含める（初回Ctrl+Click対策）
-      if (!sel.selectedIndices[cur]) {
+      if (cur !== index && !sel.selectedIndices[cur]) {
         sel.toggleSelect(cur, true)
       }
       sel.toggleSelect(index, true)

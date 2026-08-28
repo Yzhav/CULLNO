@@ -19,6 +19,9 @@ export async function decodeTga(filePath: string): Promise<TgaData> {
 
 export function decodeTgaBuffer(buf: Buffer): TgaData {
   // Header (18 bytes)
+  if (buf.length < 18) {
+    throw new Error('Invalid TGA: header is truncated')
+  }
   const idLength = buf[0]
   const colorMapType = buf[1]
   const imageType = buf[2]
@@ -36,22 +39,39 @@ export function decodeTgaBuffer(buf: Buffer): TgaData {
   if (bpp !== 24 && bpp !== 32) {
     throw new Error(`Unsupported TGA bit depth: ${bpp}`)
   }
+  if (width === 0 || height === 0) {
+    throw new Error('Invalid TGA: width and height must be greater than zero')
+  }
+  if ((descriptor & 0xC0) !== 0) {
+    throw new Error('Interleaved TGA images are not supported')
+  }
 
   const channels = (bpp / 8) as 3 | 4
+  const byteLength = width * height * channels
+  if (!Number.isSafeInteger(byteLength) || byteLength > 512 * 1024 * 1024) {
+    throw new Error('Invalid TGA: decoded image is too large')
+  }
   const topToBottom = (descriptor & 0x20) !== 0
+  const rightToLeft = (descriptor & 0x10) !== 0
   const dataOffset = 18 + idLength
+  if (dataOffset > buf.length) {
+    throw new Error('Invalid TGA: image ID is truncated')
+  }
 
   let rawPixels: Buffer
   if (imageType === 2) {
     // 非圧縮
-    rawPixels = buf.subarray(dataOffset, dataOffset + width * height * channels)
+    if (buf.length - dataOffset < byteLength) {
+      throw new Error('Invalid TGA: pixel data is truncated')
+    }
+    rawPixels = buf.subarray(dataOffset, dataOffset + byteLength)
   } else {
     // RLE圧縮
     rawPixels = decodeRle(buf, dataOffset, width * height, channels)
   }
 
   // BGR(A) → RGB(A) に変換 + 上下反転
-  const pixels = Buffer.alloc(width * height * channels)
+  const pixels = Buffer.allocUnsafe(byteLength)
   const rowBytes = width * channels
 
   for (let y = 0; y < height; y++) {
@@ -60,7 +80,8 @@ export function decodeTgaBuffer(buf: Buffer): TgaData {
     const dstOffset = y * rowBytes
 
     for (let x = 0; x < width; x++) {
-      const si = srcOffset + x * channels
+      const srcX = rightToLeft ? width - 1 - x : x
+      const si = srcOffset + srcX * channels
       const di = dstOffset + x * channels
       // BGR → RGB swap
       pixels[di] = rawPixels[si + 2]     // R
@@ -81,11 +102,20 @@ function decodeRle(buf: Buffer, offset: number, pixelCount: number, channels: nu
   let pixelIndex = 0
 
   while (pixelIndex < pixelCount) {
+    if (pos >= buf.length) {
+      throw new Error('Invalid TGA: RLE packet header is truncated')
+    }
     const header = buf[pos++]
     const count = (header & 0x7F) + 1
+    if (count > pixelCount - pixelIndex) {
+      throw new Error('Invalid TGA: RLE packet exceeds the declared pixel count')
+    }
 
     if (header & 0x80) {
       // RLE packet: 1 pixel repeated
+      if (buf.length - pos < channels) {
+        throw new Error('Invalid TGA: RLE pixel is truncated')
+      }
       const pixel = buf.subarray(pos, pos + channels)
       pos += channels
       for (let i = 0; i < count; i++) {
@@ -95,6 +125,9 @@ function decodeRle(buf: Buffer, offset: number, pixelCount: number, channels: nu
     } else {
       // Raw packet: sequential pixels
       const bytes = count * channels
+      if (buf.length - pos < bytes) {
+        throw new Error('Invalid TGA: raw RLE packet is truncated')
+      }
       buf.copy(output, pixelIndex * channels, pos, pos + bytes)
       pos += bytes
       pixelIndex += count

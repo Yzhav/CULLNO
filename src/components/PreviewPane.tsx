@@ -45,13 +45,14 @@ const useStyles = makeStyles({
 
 interface PreviewPaneProps {
   filePath: string | null
+  modifiedAt?: number
   onClickImage?: () => void
   'aria-label'?: string
 }
 
-export function PreviewPane({ filePath, onClickImage, 'aria-label': ariaLabel }: PreviewPaneProps) {
+export function PreviewPane({ filePath, modifiedAt = 0, onClickImage, 'aria-label': ariaLabel }: PreviewPaneProps) {
   const styles = useStyles()
-  const { dataUrl, loading } = useProgressiveThumbnail(filePath)
+  const { dataUrl, loading } = useProgressiveThumbnail(filePath, modifiedAt)
   const fileName = filePath ? getBaseName(filePath) : ''
 
   return (

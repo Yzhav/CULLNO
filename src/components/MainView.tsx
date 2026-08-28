@@ -39,17 +39,17 @@ export function MainView() {
   const currentItem = flatItems[currentIndex]
 
   // プレビューモード時のみプリフェッチ
-  const neighborPaths = useMemo(() => {
+  const neighborImages = useMemo(() => {
     if (viewMode === 'grid') return []
-    const paths: (string | null)[] = []
+    const neighborItems = []
     for (let d = -3; d <= 5; d++) {
       if (d === 0) continue
       const item = flatItems[currentIndex + d]
-      paths.push(item?.image.filePath ?? null)
+      neighborItems.push(item?.image ?? null)
     }
-    return paths
+    return neighborItems
   }, [flatItems, currentIndex, viewMode])
-  usePrefetchNeighbors(neighborPaths)
+  usePrefetchNeighbors(neighborImages)
 
   return (
     <div className={styles.root} role="main">
@@ -61,6 +61,7 @@ export function MainView() {
           <div className={styles.previewArea}>
             <PreviewPane
               filePath={currentItem?.image.filePath ?? null}
+              modifiedAt={currentItem?.image.modifiedAt}
               onClickImage={() => useSessionStore.getState().togglePick()}
             />
           </div>

@@ -1,11 +1,16 @@
 import { app, BrowserWindow, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
-import * as fs from 'fs'
+import { pathToFileURL } from 'url'
 import { registerIpcHandlers, cleanupWorkers } from './ipc-handlers'
 
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
+  const rendererPath = join(__dirname, '../dist/index.html')
+  const rendererUrl = app.isPackaged
+    ? pathToFileURL(rendererPath).href
+    : 'http://localhost:5173/'
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -25,19 +30,23 @@ function createWindow() {
     },
   })
 
-  // ファイルドロップによるナビゲーションのみ防止（http://はdev server用に許可）
+  // renderer以外への遷移を拒否し、preload APIを外部ページへ公開しない
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    const isAllowed = app.isPackaged
+      ? url === rendererUrl
+      : new URL(url).origin === new URL(rendererUrl).origin
+    if (!isAllowed) {
       event.preventDefault()
     }
   })
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   // 開発モード判定
   if (!app.isPackaged) {
-    mainWindow.loadURL('http://localhost:5173')
+    mainWindow.loadURL(rendererUrl)
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
-    mainWindow.loadFile(join(__dirname, '../dist/index.html'))
+    mainWindow.loadFile(rendererPath)
   }
 
   mainWindow.webContents.once('did-finish-load', () => {
@@ -70,19 +79,6 @@ Menu.setApplicationMenu(null)
 app.whenReady().then(() => {
   // Windows環境でもタイトルバーをダークに強制
   nativeTheme.themeSource = 'dark'
-
-  // 起動時キャッシュ診断
-  const cacheRoot = join(app.getPath('userData'), 'thumb-cache')
-  console.log('[Startup] userData:', app.getPath('userData'))
-  console.log('[Startup] cacheRoot exists?', fs.existsSync(cacheRoot))
-  if (fs.existsSync(cacheRoot)) {
-    const subDirs = fs.readdirSync(cacheRoot)
-    console.log('[Startup] cache subdirs:', subDirs)
-    for (const sub of subDirs) {
-      const files = fs.readdirSync(join(cacheRoot, sub))
-      console.log(`[Startup] ${sub}: ${files.length} files`)
-    }
-  }
 
   registerIpcHandlers()
   createWindow()

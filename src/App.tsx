@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { makeStyles, FluentProvider } from '@fluentui/react-components'
 import { cullnoTheme } from './styles/tokens'
 import { MainView } from './components/MainView'
@@ -9,9 +9,10 @@ import { DeleteConfirmDialog } from './components/TrashDialog'
 import { StatusBar } from './components/StatusBar'
 import { CullnoToolbar } from './components/Toolbar'
 import { useKeyBindings } from './hooks/useKeyBindings'
-import { useSessionStore } from './stores/useSessionStore'
+import { useSessionStore, buildFlatItems } from './stores/useSessionStore'
 import { useKeybindStore } from './stores/useKeybindStore'
 import { addToMRU, setMruMaxCount } from './utils/mru'
+import { updateSettings } from './utils/settingsUtils'
 
 const useStyles = makeStyles({
   root: {
@@ -35,12 +36,17 @@ export function App() {
   const setScanError = useSessionStore(s => s.setScanError)
   const setSettings = useSessionStore(s => s.setSettings)
   const restoreSession = useSessionStore(s => s.restoreSession)
+  const scanRequestRef = useRef(0)
+  const refreshRequestRef = useRef(0)
+  const previewRequestRef = useRef(0)
 
   useKeyBindings()
 
   // 起動時にキーバインド設定を読み込み
   useEffect(() => {
-    useKeybindStore.getState().loadKeybinds()
+    useKeybindStore.getState().loadKeybinds().catch(error => {
+      console.error('[Keybinds] failed to load:', error)
+    })
   }, [])
 
   // 起動時に設定を読み込み
@@ -49,20 +55,24 @@ export function App() {
     window.electronAPI.loadSettings().then(settings => {
       setSettings(settings)
       if (settings.gridThumbSize) {
-        useSessionStore.getState().setGridThumbSize(settings.gridThumbSize)
+        useSessionStore.setState({
+          gridThumbSize: Math.max(100, Math.min(300, settings.gridThumbSize)),
+        })
       }
       if (settings.showFilmStrip === false) {
-        useSessionStore.getState().setShowFilmStrip(false)
+        useSessionStore.setState({ showFilmStrip: false })
       }
       if (settings.mruMaxCount) {
         setMruMaxCount(settings.mruMaxCount)
       }
       if (settings.uiScale) {
-        setUiScale(settings.uiScale)
+        setUiScale(Math.max(80, Math.min(150, settings.uiScale)))
       }
       if (settings.defaultFolder) {
         setFolderPath(settings.defaultFolder)
       }
+    }).catch(error => {
+      console.error('[Settings] failed to load:', error)
     })
   }, [])
 
@@ -75,12 +85,25 @@ export function App() {
     return () => { cleanup() }
   }, [])
 
+  const generatePreviews = useCallback((filePaths: string[], rootFolder: string) => {
+    const requestId = ++previewRequestRef.current
+    void window.electronAPI.generateAllPreviews(filePaths, rootFolder).catch(error => {
+      console.error('[Preview] batch generation failed:', error)
+    }).finally(() => {
+      if (requestId === previewRequestRef.current) {
+        useSessionStore.getState().setPreviewProgress(null)
+      }
+    })
+  }, [])
+
   // フォルダ監視: ファイル追加/削除時のリフレッシュ
   const refreshFolder = useCallback(async () => {
     const currentPath = useSessionStore.getState().folderPath
     if (!currentPath) return
+    const requestId = ++refreshRequestRef.current
     try {
       const result = await window.electronAPI.scanFolder(currentPath)
+      if (requestId !== refreshRequestRef.current || useSessionStore.getState().folderPath !== currentPath) return
       const state = useSessionStore.getState()
       // ピック状態をファイルパスベースでマージ
       const pickedSet = new Set(
@@ -101,9 +124,16 @@ export function App() {
           picked: pickedSet.has(g.representative.filePath),
         },
       }))
-      // currentIndex をクランプ
-      const flatCount = mergedImages.length
-      const clampedIndex = Math.min(state.currentIndex, Math.max(0, flatCount - 1))
+      // 表示中のファイルを維持し、フィルタ・展開状態を含むフラット配列でクランプ
+      const previousFlat = buildFlatItems(state.groups, state.expandedGroupIds, state.filterPickedOnly, state.extensionFilter)
+      const currentFilePath = previousFlat[state.currentIndex]?.image.filePath
+      const nextFlat = buildFlatItems(mergedGroups, state.expandedGroupIds, state.filterPickedOnly, state.extensionFilter)
+      const matchedIndex = currentFilePath
+        ? nextFlat.findIndex(item => item.image.filePath === currentFilePath)
+        : -1
+      const clampedIndex = matchedIndex >= 0
+        ? matchedIndex
+        : Math.min(state.currentIndex, Math.max(0, nextFlat.length - 1))
       useSessionStore.setState({
         images: mergedImages,
         groups: mergedGroups,
@@ -113,14 +143,12 @@ export function App() {
       // 新規画像のプレビュー生成
       if (mergedImages.length > 0) {
         const filePaths = mergedImages.map(img => img.filePath)
-        window.electronAPI.generateAllPreviews(filePaths, currentPath).then(() => {
-          useSessionStore.getState().setPreviewProgress(null)
-        })
+        generatePreviews(filePaths, currentPath)
       }
     } catch (err) {
       console.error('[FolderWatcher] refresh failed:', err)
     }
-  }, [])
+  }, [generatePreviews])
 
   // onFolderChanged リスナー
   useEffect(() => {
@@ -133,11 +161,13 @@ export function App() {
 
   // フォルダ変更時にスキャン
   const scanAndLoad = useCallback(async (path: string) => {
+    const requestId = ++scanRequestRef.current
     setScanning(true)
     setScanError(null)
     useSessionStore.getState().setPreviewProgress(null)
     try {
       const result = await window.electronAPI.scanFolder(path)
+      if (requestId !== scanRequestRef.current || useSessionStore.getState().folderPath !== path) return
       setScanResult(result)
 
       // MRU更新
@@ -150,13 +180,14 @@ export function App() {
       })
 
       const session = await window.electronAPI.loadSession(path)
+      if (requestId !== scanRequestRef.current || useSessionStore.getState().folderPath !== path) return
       if (session) {
         restoreSession(session)
       }
 
       const settings = await window.electronAPI.loadSettings()
       if (settings.defaultFolder !== path) {
-        await window.electronAPI.saveSettings({ ...settings, defaultFolder: path })
+        await updateSettings({ defaultFolder: path })
       }
 
       // 連射自動展開
@@ -166,16 +197,14 @@ export function App() {
 
       if (result.images.length > 0) {
         const filePaths = result.images.map(img => img.filePath)
-        window.electronAPI.generateAllPreviews(filePaths, path).then(() => {
-          useSessionStore.getState().setPreviewProgress(null)
-        })
+        generatePreviews(filePaths, path)
       }
     } catch (err) {
-      setScanError(String(err))
+      if (requestId === scanRequestRef.current) setScanError(String(err))
     } finally {
-      setScanning(false)
+      if (requestId === scanRequestRef.current) setScanning(false)
     }
-  }, [setScanResult, setScanning, setScanError, restoreSession])
+  }, [setScanResult, setScanning, setScanError, restoreSession, generatePreviews])
 
   useEffect(() => {
     if (folderPath) {
@@ -199,9 +228,9 @@ export function App() {
   useEffect(() => {
     const handler = () => {
       if (document.fullscreenElement) {
-        document.exitFullscreen()
+        document.exitFullscreen().catch(error => console.error('[Fullscreen] exit failed:', error))
       } else {
-        document.documentElement.requestFullscreen()
+        document.documentElement.requestFullscreen().catch(error => console.error('[Fullscreen] request failed:', error))
       }
     }
     window.addEventListener('cullno:fullscreen', handler)

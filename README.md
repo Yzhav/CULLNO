@@ -17,7 +17,7 @@
 
 ## 技術スタック
 
-- Electron 33 + Vite 5
+- Electron 44 + Vite 8
 - React 18 + Fluent UI v9
 - Zustand 5（状態管理）
 - Sharp（サムネイル生成）

@@ -31,15 +31,15 @@
 taskkill //f //im electron.exe 2>/dev/null
 
 # 2. dev server 起動（バックグラウンド）
-# vite.config.ts で --remote-debugging-port=9223 が自動付与される
-cd G:/ClaudeCode/tools/cullno && npm run dev &
+# vite.config.mts で --remote-debugging-port=9223 が自動付与される
+cd G:/Codex/tools/cullno && npm run dev &
 
 # 3. 少し待ってから agent-browser を接続
 sleep 3
 agent-browser connect 9223
 ```
 
-CDP ポート 9223 は `vite.config.ts` の `onstart` で設定済み。`npm run dev` するだけで自動的に CDP が有効になる。
+CDP ポート 9223 は `vite.config.mts` の `onstart` で設定済み。`npm run dev` するだけで自動的に CDP が有効になる。
 
 ---
 
@@ -99,7 +99,7 @@ document.addEventListener('drop', (e) => {
 
 ### 技術スタック
 
-- Electron 33 + Vite 5 + React 18 + Fluent UI v9 + Sharp
+- Electron 44 + Vite 8 + React 18 + Fluent UI v9 + Sharp
 - 状態管理: Zustand 5
 - TGAデコーダ: 自前実装（Sharpは TGA非対応）
 - ビルド: vite-plugin-electron + electron-builder

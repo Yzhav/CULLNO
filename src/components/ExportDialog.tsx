@@ -37,6 +37,9 @@ const useStyles = makeStyles({
   success: {
     color: tokens.colorPaletteGreenForeground1,
   },
+  error: {
+    color: tokens.colorPaletteRedForeground1,
+  },
 })
 
 export function ExportDialog() {
@@ -45,6 +48,7 @@ export function ExportDialog() {
   const [exporting, setExporting] = useState(false)
   const [progress, setProgress] = useState<ExportProgress | null>(null)
   const [done, setDone] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // 設定
   const [subfolderName, setSubfolderName] = useState('export')
@@ -63,6 +67,7 @@ export function ExportDialog() {
     if (open && folderPath) {
       setCustomBasePath(folderPath.replace(/[/\\]$/, ''))
       setDone(false)
+      setError(null)
       setProgress(null)
     }
   }, [open, folderPath])
@@ -98,10 +103,14 @@ export function ExportDialog() {
   }, [pickedImages, suffix, ext])
 
   const handleSelectFolder = useCallback(async () => {
-    const path = await window.electronAPI.selectFolder()
-    if (path) {
-      setCustomBasePath(path.replace(/[/\\]$/, ''))
-      setUseSubfolder(false)
+    try {
+      const path = await window.electronAPI.selectFolder()
+      if (path) {
+        setCustomBasePath(path.replace(/[/\\]$/, ''))
+        setUseSubfolder(false)
+      }
+    } catch (selectError) {
+      setError(String(selectError))
     }
   }, [])
 
@@ -109,26 +118,40 @@ export function ExportDialog() {
     if (!outputDir || pickedImages.length === 0) return
     setExporting(true)
     setDone(false)
+    setError(null)
 
-    await window.electronAPI.exportPng(
-      pickedImages.map(i => i.filePath),
-      outputDir,
-      suffix || undefined,
-      format,
-      format === 'jpeg' ? jpegQuality : undefined,
-    )
-    setExporting(false)
-    setDone(true)
+    try {
+      const result = await window.electronAPI.exportPng(
+        pickedImages.map(i => i.filePath),
+        outputDir,
+        suffix || undefined,
+        format,
+        format === 'jpeg' ? jpegQuality : undefined,
+      )
+      if (result.success) {
+        setDone(true)
+      } else {
+        setError(`${result.count} 枚を出力しましたが、${result.failedFiles.length} 枚は失敗しました`)
+      }
+    } catch (exportError) {
+      setError(String(exportError))
+    } finally {
+      setExporting(false)
+    }
   }
 
-  const handleOpenFolder = () => {
+  const handleOpenFolder = async () => {
     if (outputDir) {
-      window.electronAPI.openInExplorer(outputDir)
+      try {
+        await window.electronAPI.openInExplorer(outputDir)
+      } catch (openError) {
+        setError(String(openError))
+      }
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(_, d) => { setOpen(d.open) }}>
+    <Dialog open={open} onOpenChange={(_, d) => { if (!exporting) setOpen(d.open) }}>
       <DialogSurface>
         <DialogBody>
           <DialogTitle>エクスポート</DialogTitle>
@@ -230,6 +253,7 @@ export function ExportDialog() {
                 エクスポート完了
               </Text>
             )}
+            {error && <Text className={styles.error}>{error}</Text>}
           </DialogContent>
           <DialogActions>
             {done ? (
@@ -239,7 +263,7 @@ export function ExportDialog() {
               </>
             ) : (
               <>
-                <Button onClick={() => setOpen(false)}>キャンセル</Button>
+                <Button onClick={() => setOpen(false)} disabled={exporting}>キャンセル</Button>
                 <Button
                   appearance="primary"
                   icon={<ArrowExportUp24Regular />}

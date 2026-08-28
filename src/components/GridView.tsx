@@ -112,13 +112,14 @@ const useCellStyles = makeStyles({
   },
 })
 
-const GridCell = memo(function GridCell({ item, isCurrent, isMultiSelected, onClick, onDoubleClick, onContextMenu }: {
+const GridCell = memo(function GridCell({ item, index, isCurrent, isMultiSelected, onClick, onDoubleClick, onContextMenu }: {
   item: FlatItem
+  index: number
   isCurrent: boolean
   isMultiSelected: boolean
-  onClick: (e: React.MouseEvent) => void
-  onDoubleClick: () => void
-  onContextMenu: (e: React.MouseEvent) => void
+  onClick: (index: number, e: React.MouseEvent) => void
+  onDoubleClick: (item: FlatItem, index: number) => void
+  onContextMenu: (item: FlatItem, index: number, e: React.MouseEvent) => void
 }) {
   const styles = useCellStyles()
   const dataUrl = useThumbnail(item.image.filePath, 'preview', item.image.modifiedAt)
@@ -136,9 +137,9 @@ const GridCell = memo(function GridCell({ item, isCurrent, isMultiSelected, onCl
           : item.image.picked ? styles.picked
           : undefined,
       )}
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      onContextMenu={onContextMenu}
+      onClick={(e) => onClick(index, e)}
+      onDoubleClick={() => onDoubleClick(item, index)}
+      onContextMenu={(e) => onContextMenu(item, index, e)}
       role="gridcell"
       aria-selected={highlighted}
       aria-label={getBaseName(item.image.filePath)}
@@ -226,7 +227,7 @@ export function GridView() {
     const cells = gridRef.current?.querySelectorAll('[role="gridcell"]')
     const selected = cells?.[currentIndex] as HTMLElement | undefined
     if (selected) {
-      selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      selected.scrollIntoView({ block: 'nearest', behavior: 'auto' })
     }
   }, [currentIndex])
 
@@ -321,11 +322,12 @@ export function GridView() {
           <GridCell
             key={item.image.filePath}
             item={item}
+            index={idx}
             isCurrent={idx === currentIndex}
             isMultiSelected={!!selectedIndices[idx]}
-            onClick={(e) => handleClick(idx, e)}
-            onDoubleClick={() => handleDoubleClick(item, idx)}
-            onContextMenu={(e) => handleContextMenu(item, idx, e)}
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onContextMenu={handleContextMenu}
           />
         ))}
       </div>

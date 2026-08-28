@@ -34,7 +34,10 @@ export const useSelectionStore = create<SelectionState>()((set, get) => ({
     set({ selectedIndices: next })
   },
 
-  clearSelection: () => set({ selectedIndices: {} }),
+  clearSelection: () => {
+    if (Object.keys(get().selectedIndices).length === 0) return
+    set({ selectedIndices: {} })
+  },
 
   getSelectedCount: () => Object.keys(get().selectedIndices).length,
   getSelectedKeys: () => Object.keys(get().selectedIndices).map(Number),

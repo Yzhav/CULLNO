@@ -112,8 +112,6 @@ export function useKeyBindings() {
 
       // --- グリッドモード ---
       if (s.viewMode === 'grid') {
-        const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
-
         if (e.key === kb.navigatePrev) {
           e.preventDefault()
           useSelectionStore.getState().clearSelection()
@@ -141,6 +139,7 @@ export function useKeyBindings() {
         if (e.key === kb.pick) {
           e.preventDefault()
           if (useSelectionStore.getState().getSelectedCount() > 0) {
+            const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
             const keys = useSelectionStore.getState().getSelectedKeys()
             const allPicked = keys.every(idx => flat[idx]?.image.picked)
             if (allPicked) {
@@ -165,6 +164,7 @@ export function useKeyBindings() {
         // 連射展開/折畳（burstToggleキーのみ）
         if (e.key === kb.burstToggle || e.key === kb.burstToggle.toUpperCase()) {
           e.preventDefault()
+          const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
           const item = flat[s.currentIndex]
           if (item?.type === 'burst-rep' && item.group) {
             s.toggleBurstExpand(item.group.id)

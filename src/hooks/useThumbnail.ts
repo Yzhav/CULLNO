@@ -102,12 +102,13 @@ export function useProgressiveThumbnail(filePath: string | null, modifiedAt = 0)
   stage: ThumbnailSize | null
   loading: boolean
 } {
+  const fullSize = useSessionStore(s => s.settings.previewResolution ?? 'full')
   // 初期値でキャッシュから最良の画像を探す
   const initialUrl = filePath
-    ? (getCached(filePath, 'full', modifiedAt) ?? getCached(filePath, 'preview', modifiedAt))
+    ? (getCached(filePath, fullSize, modifiedAt) ?? getCached(filePath, 'preview', modifiedAt))
     : null
   const initialStage: ThumbnailSize | null = filePath
-    ? (getCached(filePath, 'full', modifiedAt) ? 'full' : getCached(filePath, 'preview', modifiedAt) ? 'preview' : null)
+    ? (getCached(filePath, fullSize, modifiedAt) ? fullSize : getCached(filePath, 'preview', modifiedAt) ? 'preview' : null)
     : null
 
   const [dataUrl, setDataUrl] = useState<string | null>(initialUrl)
@@ -125,10 +126,10 @@ export function useProgressiveThumbnail(filePath: string | null, modifiedAt = 0)
     }
 
     // fullがキャッシュ済みなら完了
-    const cachedFull = getCached(filePath, 'full', modifiedAt)
+    const cachedFull = getCached(filePath, fullSize, modifiedAt)
     if (cachedFull) {
       setDataUrl(cachedFull)
-      setStage('full')
+      setStage(fullSize)
       setLoading(false)
       return
     }
@@ -159,11 +160,11 @@ export function useProgressiveThumbnail(filePath: string | null, modifiedAt = 0)
         }
 
         // Stage 2: full
-        const full = await fetchAndCache(filePath, 'full', modifiedAt)
+        const full = await fetchAndCache(filePath, fullSize, modifiedAt)
         if (cancelled) return
         if (full) {
           setDataUrl(full)
-          setStage('full')
+          setStage(fullSize)
         }
       } catch (error) {
         console.error(`[Thumbnail] failed: ${filePath}`, error)
@@ -175,7 +176,7 @@ export function useProgressiveThumbnail(filePath: string | null, modifiedAt = 0)
     void load()
 
     return () => { cancelled = true }
-  }, [filePath, modifiedAt])
+  }, [filePath, modifiedAt, fullSize])
 
   return { dataUrl, stage, loading }
 }

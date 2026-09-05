@@ -5,6 +5,8 @@ import { getBaseName } from '../utils/fileUtils'
 const useStyles = makeStyles({
   root: {
     flex: 1,
+    minWidth: 0,
+    touchAction: 'manipulation',
     position: 'relative',
     backgroundColor: tokens.colorNeutralBackground1,
     overflow: 'hidden',

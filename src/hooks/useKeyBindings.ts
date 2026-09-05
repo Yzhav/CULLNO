@@ -7,7 +7,12 @@ import { folderDialogGuard, withDialogGuard } from '../utils/dialogGuard'
 export function useKeyBindings() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ダイアログや設定メニューのキーを写真操作に流さない。
+      if (e.defaultPrevented || document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return
+      const target = e.target as HTMLElement
+      if (target.closest('button') && (e.key === ' ' || e.key === 'Enter')) return
       const s = useSessionStore.getState()
+      if (s.pendingDeletePaths) return
       const tag = (e.target as HTMLElement).tagName
       const isInputFocused = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
 
@@ -180,6 +185,7 @@ export function useKeyBindings() {
           return
         }
         if (e.key === kb.trash || e.key === 'Backspace') {
+          if (e.repeat) return
           e.preventDefault()
           if (useSelectionStore.getState().getSelectedCount() > 0) {
             const keys = useSelectionStore.getState().getSelectedKeys()
@@ -238,6 +244,7 @@ export function useKeyBindings() {
         return
       }
       if (e.key === kb.trash || e.key === 'Backspace') {
+        if (e.repeat) return
         e.preventDefault()
         s.requestDelete()
         return
@@ -246,6 +253,7 @@ export function useKeyBindings() {
 
     // 右クリックで比較モード/連射展開から戻る
     const handleContextMenu = (e: MouseEvent) => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return
       const s = useSessionStore.getState()
       if (s.viewMode === 'compare') {
         e.preventDefault()

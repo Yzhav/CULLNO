@@ -26,6 +26,7 @@ const useCellStyles = makeStyles({
     overflow: 'visible',
     cursor: 'pointer',
     padding: '6px',
+    flexDirection: 'column',
     backgroundColor: tokens.colorNeutralBackground3,
     transitionProperty: 'background-color',
     transitionDuration: '0.1s',
@@ -45,48 +46,17 @@ const useCellStyles = makeStyles({
   burstChild: {
     backgroundColor: cullnoColors.burstGroupBg,
   },
-  burstLineTop1: {
-    position: 'absolute',
-    top: '12%',
-    left: '20%',
-    right: '20%',
-    height: '2px',
-    backgroundColor: cullnoColors.burstLineBright,
-    boxShadow: `0 0 4px ${cullnoColors.burstLineGlow}`,
-    borderRadius: '2px',
-    zIndex: 2,
+  imageArea: { flex: 1, minHeight: 0, width: '100%' },
+  caption: {
+    height: '18px', flexShrink: 0, width: '100%', boxSizing: 'border-box',
+    fontSize: '10px', lineHeight: '14px', textAlign: 'center', marginTop: '3px', whiteSpace: 'nowrap',
   },
-  burstLineTop2: {
-    position: 'absolute',
-    top: '7%',
-    left: '35%',
-    right: '35%',
-    height: '2px',
-    backgroundColor: cullnoColors.burstLineSoft,
-    borderRadius: '2px',
-    zIndex: 2,
+  burstCaption: {
+    color: cullnoColors.burstLineBright,
+    borderBottom: '3px solid ' + cullnoColors.burstLineBright,
   },
-  burstLineBottom1: {
-    position: 'absolute',
-    bottom: '12%',
-    left: '20%',
-    right: '20%',
-    height: '2px',
-    backgroundColor: cullnoColors.burstLineBright,
-    boxShadow: `0 0 4px ${cullnoColors.burstLineGlow}`,
-    borderRadius: '2px',
-    zIndex: 2,
-  },
-  burstLineBottom2: {
-    position: 'absolute',
-    bottom: '7%',
-    left: '35%',
-    right: '35%',
-    height: '2px',
-    backgroundColor: cullnoColors.burstLineSoft,
-    borderRadius: '2px',
-    zIndex: 2,
-  },
+  burstStart: { borderLeft: '3px solid ' + cullnoColors.burstLineBright },
+  burstEnd: { borderRight: '3px solid ' + cullnoColors.burstLineBright },
   image: {
     width: '100%',
     height: '100%',
@@ -112,9 +82,12 @@ const useCellStyles = makeStyles({
   },
 })
 
-const GridCell = memo(function GridCell({ item, index, isCurrent, isMultiSelected, onClick, onDoubleClick, onContextMenu }: {
+const GridCell = memo(function GridCell({ item, index, burstNumber, startsBurst, endsBurst, isCurrent, isMultiSelected, onClick, onDoubleClick, onContextMenu }: {
   item: FlatItem
   index: number
+  burstNumber: number | undefined
+  startsBurst: boolean
+  endsBurst: boolean
   isCurrent: boolean
   isMultiSelected: boolean
   onClick: (index: number, e: React.MouseEvent) => void
@@ -123,7 +96,10 @@ const GridCell = memo(function GridCell({ item, index, isCurrent, isMultiSelecte
 }) {
   const styles = useCellStyles()
   const dataUrl = useThumbnail(item.image.filePath, 'preview', item.image.modifiedAt)
-  const isBurstRep = item.type === 'burst-rep' && item.burstCount && item.burstCount > 1
+  const burst = item.group
+  const burstLabel = burst
+    ? '連写 ' + burstNumber + ' · ' + (item.type === 'burst-rep' ? item.burstCount + '枚' : item.burstPosition + '/' + burst.images.length)
+    : ''
 
   const highlighted = isCurrent || isMultiSelected
 
@@ -142,14 +118,9 @@ const GridCell = memo(function GridCell({ item, index, isCurrent, isMultiSelecte
       onContextMenu={(e) => onContextMenu(item, index, e)}
       role="gridcell"
       aria-selected={highlighted}
-      aria-label={getBaseName(item.image.filePath)}
+      aria-label={[getBaseName(item.image.filePath), burstLabel].filter(Boolean).join(' · ')}
     >
-      {isBurstRep && <>
-        <div className={styles.burstLineTop2} />
-        <div className={styles.burstLineTop1} />
-        <div className={styles.burstLineBottom2} />
-        <div className={styles.burstLineBottom1} />
-      </>}
+      <div className={styles.imageArea}>
       {dataUrl ? (
         <img src={dataUrl} className={mergeClasses(
           styles.image,
@@ -158,6 +129,11 @@ const GridCell = memo(function GridCell({ item, index, isCurrent, isMultiSelecte
       ) : (
         <div className={styles.placeholder} />
       )}
+      </div>
+      <div className={mergeClasses(styles.caption, burst ? styles.burstCaption : undefined,
+        startsBurst ? styles.burstStart : undefined, endsBurst ? styles.burstEnd : undefined)} aria-hidden="true">
+        {burstLabel}
+      </div>
     </div>
   )
 })
@@ -178,6 +154,7 @@ export function GridView() {
     () => buildFlatItems(groups, expandedGroupIds, filterPickedOnly, extensionFilter),
     [groups, expandedGroupIds, filterPickedOnly, extensionFilter],
   )
+  const burstNumbers = useMemo(() => new Map(groups.filter(g => !g.isSingle).map((g, i) => [g.id, i + 1])), [groups])
   const flatPathKey = useMemo(
     () => flatItems.map(item => item.image.filePath).join('\u0000'),
     [flatItems],
@@ -323,6 +300,9 @@ export function GridView() {
             key={item.image.filePath}
             item={item}
             index={idx}
+            burstNumber={item.group ? burstNumbers.get(item.group.id) : undefined}
+            startsBurst={!!item.group && flatItems[idx - 1]?.group?.id !== item.group.id}
+            endsBurst={!!item.group && flatItems[idx + 1]?.group?.id !== item.group.id}
             isCurrent={idx === currentIndex}
             isMultiSelected={!!selectedIndices[idx]}
             onClick={handleClick}

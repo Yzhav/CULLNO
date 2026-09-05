@@ -4,6 +4,7 @@ import { useThumbnail } from '../hooks/useThumbnail'
 import { useSessionStore, buildFlatItems, type FlatItem } from '../stores/useSessionStore'
 import { getBaseName } from '../utils/fileUtils'
 import { cullnoColors } from '../styles/tokens'
+import { buildFilmSegments } from '../utils/burstUtils'
 
 // バースト展開/折畳中にセルのscrollIntoViewを一時抑制するフラグ（モジュールスコープ）
 let suppressCellScroll = false
@@ -66,7 +67,9 @@ const useStyles = makeStyles({
     alignItems: 'center',
     gap: `${THUMB_GAP}px`,
     backgroundColor: cullnoColors.burstGroupBg,
-    padding: '2px 4px',
+    padding: '3px 6px',
+    border: '2px solid ' + cullnoColors.burstLineSoft,
+    borderRadius: '4px',
     flexShrink: 0,
     marginLeft: '9px',
     marginRight: '9px',
@@ -249,10 +252,6 @@ const FilmStripThumb = memo(function FilmStripThumb({ item, isActive, onClick, o
   )
 })
 
-type FilmSegment =
-  | { type: 'thumbs'; items: Array<{ item: FlatItem; idx: number }> }
-  | { type: 'burst-group'; items: Array<{ item: FlatItem; idx: number }>; groupId: string }
-
 export function FilmStrip() {
   const styles = useStyles()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -307,33 +306,7 @@ export function FilmStrip() {
     }
   }, [expandedGroupIds])
 
-  const segments = useMemo(() => {
-    const result: FilmSegment[] = []
-    let currentThumbs: Array<{ item: FlatItem; idx: number }> = []
-
-    for (let i = 0; i < flatItems.length; i++) {
-      const item = flatItems[i]
-      if (item.type === 'burst-child') {
-        if (currentThumbs.length > 0) {
-          result.push({ type: 'thumbs', items: currentThumbs })
-          currentThumbs = []
-        }
-        const burstItems: Array<{ item: FlatItem; idx: number }> = []
-        while (i < flatItems.length && flatItems[i].type === 'burst-child') {
-          burstItems.push({ item: flatItems[i], idx: i })
-          i++
-        }
-        i--
-        result.push({ type: 'burst-group', items: burstItems, groupId: burstItems[0].item.group!.id })
-      } else {
-        currentThumbs.push({ item, idx: i })
-      }
-    }
-    if (currentThumbs.length > 0) {
-      result.push({ type: 'thumbs', items: currentThumbs })
-    }
-    return result
-  }, [flatItems])
+  const segments = useMemo(() => buildFilmSegments(flatItems), [flatItems])
 
   // ネイティブリスナーで登録（passive: false でpreventDefaultを有効化）
   useEffect(() => {

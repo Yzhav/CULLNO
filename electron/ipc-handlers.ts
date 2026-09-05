@@ -8,13 +8,7 @@ import { createHash } from 'crypto'
 import { scanFolder, resolveFolderPath, listDateFolders } from './file-scanner'
 import { startWatching, stopWatching } from './folder-watcher'
 import type { ThumbnailSize, SessionData, AppSettings, ExportFormat, ExportResult, KeybindConfig, UpdateCheckResult } from '../src/types'
-import { DEFAULT_KEYBINDS } from '../src/types'
-
-const SIZE_MAP: Record<ThumbnailSize, number> = {
-  micro: 64,
-  preview: 800,
-  full: 1920,
-}
+import { DEFAULT_KEYBINDS, THUMBNAIL_WIDTHS } from '../src/types'
 
 // ─── Worker Pool ───
 
@@ -330,8 +324,8 @@ export function registerIpcHandlers() {
 
   // サムネイル生成（Workerプール経由）
   ipcMain.handle('get-thumbnail', async (_event, filePath: string, size: ThumbnailSize, rootFolder: string) => {
-    const width = SIZE_MAP[size]
-    if (!width) throw new Error(`Unknown thumbnail size: ${size}`)
+    const width = THUMBNAIL_WIDTHS[size]
+    if (!Object.prototype.hasOwnProperty.call(THUMBNAIL_WIDTHS, size)) throw new Error(`Unknown thumbnail size: ${size}`)
 
     // キャッシュチェック
     const cachePath = getCachePath(filePath, size, rootFolder)
@@ -387,7 +381,7 @@ export function registerIpcHandlers() {
         if (index >= uncached.length) return
         const fp = uncached[index]
         try {
-          const buffer = await processInWorker(fp, 800, 85)
+          const buffer = await processInWorker(fp, THUMBNAIL_WIDTHS.preview, 85)
           if (buffer) {
             const cachePath = getCachePath(fp, 'preview', rootFolder)
             await writeCache(cachePath, buffer)

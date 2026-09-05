@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { makeStyles } from '@fluentui/react-components'
+import { Button, makeStyles, tokens } from '@fluentui/react-components'
+import { ChevronLeft24Regular, ChevronRight24Regular } from '@fluentui/react-icons'
 import { PreviewPane } from './PreviewPane'
 import { FilmStrip } from './FilmStrip'
 import { GridView } from './GridView'
@@ -13,6 +14,10 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     flex: 1,
     overflow: 'hidden',
+  },
+  navigation: {
+    minWidth: '56px', width: '56px', height: '100%', flexShrink: 0,
+    borderRadius: 0, color: tokens.colorNeutralForeground3, touchAction: 'manipulation',
   },
   previewArea: {
     flex: 1,
@@ -59,11 +64,19 @@ export function MainView() {
       ) : (
         <>
           <div className={styles.previewArea}>
+            <Button className={styles.navigation} appearance="subtle"
+              icon={<ChevronLeft24Regular />} aria-label="前の写真"
+              disabled={!currentItem || currentIndex === 0}
+              onClick={() => useSessionStore.getState().navigateBy(-1)} />
             <PreviewPane
               filePath={currentItem?.image.filePath ?? null}
               modifiedAt={currentItem?.image.modifiedAt}
               onClickImage={() => useSessionStore.getState().togglePick()}
             />
+            <Button className={styles.navigation} appearance="subtle"
+              icon={<ChevronRight24Regular />} aria-label="次の写真"
+              disabled={!currentItem || currentIndex >= flatItems.length - 1}
+              onClick={() => useSessionStore.getState().navigateBy(1)} />
           </div>
           {showFilmStrip && <FilmStrip />}
         </>

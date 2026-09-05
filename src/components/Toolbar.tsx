@@ -21,6 +21,7 @@ import { useKeybindStore } from '../stores/useKeybindStore'
 import { getBaseName } from '../utils/fileUtils'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import type { ViewMode, UpdateCheckResult } from '../types'
+import { PREVIEW_PRESETS } from '../types'
 import { folderDialogGuard, withDialogGuard } from '../utils/dialogGuard'
 import { updateSettings } from '../utils/settingsUtils'
 import { KeybindDialog } from './KeybindDialog'
@@ -114,6 +115,8 @@ export function CullnoToolbar() {
   const [cacheClearConfirm, setCacheClearConfirm] = useState(false)
   const [autoExpandBurst, setAutoExpandBurst] = useState(false)
   const [uiScale, setUiScale] = useState(100)
+  const [resolutionError, setResolutionError] = useState<string | null>(null)
+  const previewResolution = useSessionStore(s => s.settings.previewResolution ?? 'full')
   const showShortcutNav = useKeybindStore(s => s.showShortcutNav)
 
   // 設定読み込み
@@ -140,9 +143,13 @@ export function CullnoToolbar() {
     [groups, expandedGroupIds, filterPickedOnly, extensionFilter],
   )
   const pickedCount = useMemo(() => images.filter(i => i.picked).length, [images])
+  const unpickedCount = useMemo(() => images.filter(i => !i.picked && !i.trashed).length, [images])
+  const scanning = useSessionStore(s => s.scanning)
 
   const currentItem = flatItems[currentIndex]
   const currentFileName = currentItem ? getBaseName(currentItem.image.filePath) : ''
+  const currentBurst = currentItem?.group
+  const burstNumber = currentBurst ? groups.filter(g => !g.isSingle).findIndex(g => g.id === currentBurst.id) + 1 : 0
 
   const handleSelectFolder = () => {
     withDialogGuard(folderDialogGuard, async () => {
@@ -214,11 +221,12 @@ export function CullnoToolbar() {
                 {currentFileName}
               </Text>
             </Tooltip>
-            {currentItem?.type === 'burst-rep' && currentItem.burstCount && currentItem.burstCount > 1 && (
-              <span className={styles.burstBadge}>連射 {currentItem.burstCount}枚</span>
-            )}
-            {currentItem?.type === 'burst-child' && currentItem.group && (
-              <span className={styles.burstBadge}>連射</span>
+            {currentItem && currentBurst && !currentBurst.isSingle && (
+              <span className={styles.burstBadge}>
+                連写 {burstNumber} · {currentItem.type === 'burst-rep'
+                  ? currentItem.burstCount + '枚'
+                  : currentItem.burstPosition + '/' + currentBurst.images.length}
+              </span>
             )}
           </div>
 
@@ -251,6 +259,16 @@ export function CullnoToolbar() {
             </Tooltip>
 
             <ToolbarDivider />
+
+            <Tooltip content="金色枠のない写真をまとめて削除" relationship="description">
+              <ToolbarButton
+                aria-label="未ピックを削除"
+                onClick={() => useSessionStore.getState().requestDeleteUnpicked()}
+                disabled={unpickedCount === 0 || scanning}
+              >
+                未ピックを削除
+              </ToolbarButton>
+            </Tooltip>
 
             {/* Undo/Redo・フィルタ */}
             <Tooltip content="元に戻す (Ctrl+Z)" relationship="description">
@@ -319,7 +337,7 @@ export function CullnoToolbar() {
       >
         <MenuTrigger>
           <Tooltip content="設定" relationship="description">
-            <ToolbarButton icon={<Settings24Regular />} />
+            <ToolbarButton icon={<Settings24Regular />} aria-label="設定" />
           </Tooltip>
         </MenuTrigger>
         <MenuPopover>
@@ -387,6 +405,30 @@ export function CullnoToolbar() {
               }}>
               連射自動展開
             </MenuItemCheckbox>
+            <Menu persistOnItemClick checkedValues={{ resolution: [previewResolution] }}>
+              <MenuTrigger disableButtonEnhancement>
+                <MenuItem>プレビュー画質</MenuItem>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  {PREVIEW_PRESETS.map(preset => (
+                    <MenuItemRadio key={preset.size} name="resolution" value={preset.size}
+                      onClick={async () => {
+                        setResolutionError(null)
+                        try {
+                          await updateSettings({ previewResolution: preset.size })
+                          useSessionStore.setState(s => ({ settings: { ...s.settings, previewResolution: preset.size } }))
+                        } catch (error) {
+                          setResolutionError(String(error))
+                        }
+                      }}>
+                      {preset.label}
+                    </MenuItemRadio>
+                  ))}
+                  {resolutionError && <Text role="alert">画質設定を保存できませんでした: {resolutionError}</Text>}
+                </MenuList>
+              </MenuPopover>
+            </Menu>
             <Menu persistOnItemClick>
               <MenuTrigger disableButtonEnhancement>
                 <MenuItem>UIスケール: {uiScale}%</MenuItem>

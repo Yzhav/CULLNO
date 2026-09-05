@@ -8,3 +8,6 @@ skills-lock.json
 
 # スクリーンショット等（build/icon は除外しない）
 /*.png
+
+# 開発・検証用の写真とアプリデータ
+.local/

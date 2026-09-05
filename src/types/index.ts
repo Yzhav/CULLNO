@@ -43,7 +43,20 @@ export interface FilmStripItem {
 }
 
 /** サムネイルサイズ */
-export type ThumbnailSize = 'micro' | 'preview' | 'full'
+export const THUMBNAIL_WIDTHS = {
+  micro: 64,
+  preview: 800,
+  full: 1920,
+  full2k: 2560,
+  full4k: 3840,
+} as const
+export type ThumbnailSize = keyof typeof THUMBNAIL_WIDTHS
+export type PreviewResolution = Exclude<ThumbnailSize, 'micro' | 'preview'>
+export const PREVIEW_PRESETS: { size: PreviewResolution; label: string }[] = [
+  { size: 'full', label: '標準（1920px）' },
+  { size: 'full2k', label: '高精細（2560px / QHD）' },
+  { size: 'full4k', label: '4K（3840px）' },
+]
 
 /** サムネイル生成リクエスト */
 export interface ThumbnailRequest {
@@ -82,6 +95,7 @@ export interface AppSettings {
   theme?: 'dark' | 'light'
   uiScale?: number  // 80-150, デフォルト100
   homeBackground?: string  // Home背景画像のファイルパス
+  previewResolution?: PreviewResolution
 }
 
 /** 表示モード */

@@ -1,7 +1,15 @@
 import { app, BrowserWindow, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import { mkdirSync } from 'fs'
 import { registerIpcHandlers, cleanupWorkers } from './ipc-handlers'
+
+// 開発起動では業務用の選別状態・設定を書き換えない。
+if (!app.isPackaged) {
+  const devData = join(app.getAppPath(), '.local', 'dev-data')
+  mkdirSync(devData, { recursive: true })
+  app.setPath('userData', devData)
+}
 
 let mainWindow: BrowserWindow | null = null
 

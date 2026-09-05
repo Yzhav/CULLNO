@@ -6,6 +6,7 @@ import { resolve } from 'node:path'
 
 export default defineConfig({
   base: './',
+  server: { watch: { ignored: ['**/.local/**'] } },
   plugins: [
     react(),
     electron([

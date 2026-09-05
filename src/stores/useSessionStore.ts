@@ -29,6 +29,7 @@ export interface FlatItem {
   image: TgaImage
   group?: BurstGroup
   burstCount?: number
+  burstPosition?: number
   globalIndex: number
 }
 
@@ -58,10 +59,10 @@ export function buildFlatItems(
       items.push({ type: 'single', image: group.images[0], globalIndex })
       globalIndex++
     } else if (expandedSet.has('__all__') || expandedSet.has(group.id)) {
-      for (const img of group.images) {
+      for (const [position, img] of group.images.entries()) {
         if (filterPickedOnly && !img.picked) continue
         if (!matchesExtFilter(img, extensionFilter)) continue
-        items.push({ type: 'burst-child', image: img, group, globalIndex })
+        items.push({ type: 'burst-child', image: img, group, burstPosition: position + 1, globalIndex })
         globalIndex++
       }
     } else {
@@ -137,7 +138,9 @@ interface SessionState {
   unpickAll: () => void
   pendingDeletePaths: string[] | null
   deleteError: string | null
+  deleteKind: 'selected' | 'unpicked'
   requestDelete: (selectedIndices?: number[]) => void
+  requestDeleteUnpicked: () => void
   confirmDelete: () => Promise<void>
   cancelDelete: () => void
   togglePickedFilter: () => void
@@ -163,6 +166,7 @@ interface SessionState {
 // デバウンス用タイマー（ストア外で管理）
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let thumbSaveTimer: ReturnType<typeof setTimeout> | null = null
+let deleteInFlight = false
 
 export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   folderPath: null,
@@ -187,6 +191,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   previewProgress: null,
   pendingDeletePaths: null,
   deleteError: null,
+  deleteKind: 'selected',
 
   setFolderPath: (path) => set({ folderPath: path }),
   setSettings: (settings) => set({ settings }),
@@ -271,6 +276,7 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
 
   requestDelete: (selectedIndices?: number[]) => {
     const s = get()
+    if (s.pendingDeletePaths || deleteInFlight) return
     const flat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     let paths: string[]
     if (selectedIndices && selectedIndices.length > 0) {
@@ -279,67 +285,83 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
       const item = flat[s.currentIndex]
       paths = item ? [item.image.filePath] : []
     }
-    if (paths.length > 0) set({ pendingDeletePaths: paths, deleteError: null })
+    if (paths.length > 0) set({ pendingDeletePaths: [...new Set(paths)], deleteError: null, deleteKind: 'selected' })
+  },
+
+  requestDeleteUnpicked: () => {
+    const s = get()
+    if (s.pendingDeletePaths || deleteInFlight || s.scanning) return
+    // 確認を開いた時点の未ピックだけを固定。表示フィルタや複数選択は使わない。
+    const paths = s.images.filter(img => !img.picked && !img.trashed).map(img => img.filePath)
+    if (paths.length > 0) set({ pendingDeletePaths: paths, deleteError: null, deleteKind: 'unpicked' })
   },
 
   confirmDelete: async () => {
     const s = get()
     const paths = s.pendingDeletePaths
-    if (!paths || paths.length === 0) return
-
-    const results = await window.electronAPI.moveToTrash(paths)
-    const successfulPaths = new Set(results.filter(result => result.success).map(result => result.path))
-    const failedPaths = results.filter(result => !result.success).map(result => result.path)
-    if (successfulPaths.size === 0) {
-      set({
-        pendingDeletePaths: failedPaths,
-        deleteError: `${failedPaths.length} 枚のファイルを trash フォルダへ移動できませんでした`,
-      })
-      return
-    }
-
-    const current = get()
-    const removedSize = current.images
-      .filter(img => successfulPaths.has(img.filePath))
-      .reduce((sum, img) => sum + img.fileSize, 0)
-    const newImages = current.images.filter(img => !successfulPaths.has(img.filePath))
-    const newGroups = current.groups.map(g => {
-      const filtered = g.images.filter(img => !successfulPaths.has(img.filePath))
-      if (filtered.length === 0) return null
-      const rep = successfulPaths.has(g.representative.filePath) ? filtered[0] : g.representative
-      return {
-        ...g,
-        images: filtered,
-        representative: rep,
-        isSingle: filtered.length === 1,
+    if (!paths || paths.length === 0 || deleteInFlight) return
+    deleteInFlight = true
+    try {
+      const results = await window.electronAPI.moveToTrash(paths)
+      const successfulPaths = new Set(results.filter(result => result.success).map(result => result.path))
+      const failedPaths = results.filter(result => !result.success).map(result => result.path)
+      if (successfulPaths.size === 0) {
+        set({
+          pendingDeletePaths: failedPaths,
+          deleteError: `${failedPaths.length} 枚のファイルを trash フォルダへ移動できませんでした`,
+        })
+        return
       }
-    }).filter(Boolean) as BurstGroup[]
 
-    // 拡張子フィルタの整合性チェック: フィルタ対象が0件になったらリセット
-    let extFilter = current.extensionFilter
-    if (extFilter) {
-      const hasMatch = newImages.some(img => matchesExtFilter(img, extFilter))
-      if (!hasMatch) extFilter = null
+      const current = get()
+      const removedSize = current.images
+        .filter(img => successfulPaths.has(img.filePath))
+        .reduce((sum, img) => sum + img.fileSize, 0)
+      const newImages = current.images.filter(img => !successfulPaths.has(img.filePath))
+      const newGroups = current.groups.map(g => {
+        const filtered = g.images.filter(img => !successfulPaths.has(img.filePath))
+        if (filtered.length === 0) return null
+        const rep = successfulPaths.has(g.representative.filePath) ? filtered[0] : g.representative
+        return {
+          ...g,
+          images: filtered,
+          representative: rep,
+          isSingle: filtered.length === 1,
+        }
+      }).filter(Boolean) as BurstGroup[]
+
+      // 拡張子フィルタの整合性チェック: フィルタ対象が0件になったらリセット
+      let extFilter = current.extensionFilter
+      if (extFilter) {
+        const hasMatch = newImages.some(img => matchesExtFilter(img, extFilter))
+        if (!hasMatch) extFilter = null
+      }
+
+      const flat = buildFlatItems(newGroups, current.expandedGroupIds, current.filterPickedOnly, extFilter)
+      const clampedIndex = flat.length === 0 ? 0 : Math.min(current.currentIndex, flat.length - 1)
+
+      set({
+        images: newImages,
+        groups: newGroups,
+        totalSize: Math.max(0, current.totalSize - removedSize),
+        currentIndex: clampedIndex,
+        extensionFilter: extFilter,
+        pendingDeletePaths: failedPaths.length > 0 ? failedPaths : null,
+        deleteError: failedPaths.length > 0
+          ? `${failedPaths.length} 枚のファイルを trash フォルダへ移動できませんでした`
+          : null,
+      })
+      // 移動済みの実ファイルをUndoで一覧に復活させない。
+      useSessionStore.temporal.getState().clear()
+      get().debouncedSave()
+    } finally {
+      deleteInFlight = false
     }
-
-    const flat = buildFlatItems(newGroups, current.expandedGroupIds, current.filterPickedOnly, extFilter)
-    const clampedIndex = flat.length === 0 ? 0 : Math.min(current.currentIndex, flat.length - 1)
-
-    set({
-      images: newImages,
-      groups: newGroups,
-      totalSize: Math.max(0, current.totalSize - removedSize),
-      currentIndex: clampedIndex,
-      extensionFilter: extFilter,
-      pendingDeletePaths: failedPaths.length > 0 ? failedPaths : null,
-      deleteError: failedPaths.length > 0
-        ? `${failedPaths.length} 枚のファイルを trash フォルダへ移動できませんでした`
-        : null,
-    })
-    get().debouncedSave()
   },
 
-  cancelDelete: () => set({ pendingDeletePaths: null, deleteError: null }),
+  cancelDelete: () => {
+    if (!deleteInFlight) set({ pendingDeletePaths: null, deleteError: null })
+  },
 
   togglePickedFilter: () => {
     const s = get()
@@ -409,10 +431,13 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
   toggleBurstExpand: (groupId) => {
     const s = get()
     // グループのトグル: 含まれていれば除去、なければ追加
-    const isExpanded = s.expandedGroupIds.includes(groupId)
+    const expandedIds = s.expandedGroupIds.includes('__all__')
+      ? s.groups.filter(g => !g.isSingle).map(g => g.id)
+      : s.expandedGroupIds
+    const isExpanded = expandedIds.includes(groupId)
     const newExpandedIds = isExpanded
-      ? s.expandedGroupIds.filter(id => id !== groupId)
-      : [...s.expandedGroupIds, groupId]
+      ? expandedIds.filter(id => id !== groupId)
+      : [...expandedIds, groupId]
 
     // currentIndex を維持（同じ画像パスベース）
     const oldFlat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
@@ -441,8 +466,11 @@ export const useSessionStore = create<SessionState>()(temporal((set, get) => ({
     const oldFlat = buildFlatItems(s.groups, s.expandedGroupIds, s.filterPickedOnly, s.extensionFilter)
     const currentItem = oldFlat[s.currentIndex]
     const currentGroupId = currentItem?.group?.id
+    const expandedIds = s.expandedGroupIds.includes('__all__')
+      ? s.groups.filter(g => !g.isSingle).map(g => g.id)
+      : s.expandedGroupIds
     const newExpandedIds = currentGroupId
-      ? s.expandedGroupIds.filter(id => id !== currentGroupId)
+      ? expandedIds.filter(id => id !== currentGroupId)
       : []
 
     const currentFilePath = currentItem?.image.filePath
